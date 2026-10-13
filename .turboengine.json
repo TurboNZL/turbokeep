@@ -1,0 +1,16 @@
+{
+  "engine": {
+    "repo": "TurboNZL/turboengine",
+    "ref": "378766815264ca91db67a0ec487dcd1a4648971a"
+  },
+  "modules": [
+    "release-pipeline",
+    "appearance",
+    "guides-and-docs",
+    "settings-shell",
+    "docker-self-host"
+  ],
+  "themes": "on",
+  "moved": {},
+  "notes": "A web-only app: the page is served by its own server, packaged as ONE Docker image (and a Node tarball). Deliberate differences from the 'self-hosted-server' set: (1) NO server-install-update (no Linux installer/Windows tray: Docker is the install, 'docker compose pull' is the update, written in docs/guides/BACKUP_AND_UPDATE.md), (2) NO updaters (no desktop or Android build), (3) NO cloudflare-access token fields in Settings: the web client is same-origin with the API, so the browser's own Access cookie covers every request; service-token headers are only needed for scripts and are documented in docs/guides/CLOUDFLARE_TUNNEL.md. Revisit all three the day a desktop or Android client exists. Release workflow has docker + node-bundle jobs instead of desktop/android. Standard Notes and Vikunja import/export live in apps/server/src/formats and are checked against the real formats (see docs/development/FORMATS.md). Descriptions are plain text; Vikunja HTML is flattened on import and wrapped in <p> on export on purpose."
+}

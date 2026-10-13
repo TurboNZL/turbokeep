@@ -1,0 +1,28 @@
+# Checks on every push to main only (other branches are not built): typecheck and tests for both packages, the web build, and that the Docker image builds.
+name: Check
+on:
+  push:
+    branches: [main]
+jobs:
+  ts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm --filter @turbokeep/server exec tsc --noEmit
+      - run: pnpm --filter @turbokeep/server test
+      - run: pnpm --filter @turbokeep/web exec tsc --noEmit
+      - run: pnpm --filter @turbokeep/web test
+      - run: pnpm build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with: { context: ., push: false, tags: turbokeep:check }

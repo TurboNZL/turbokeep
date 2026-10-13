@@ -1,0 +1,19 @@
+{
+  "name": "turbokeep",
+  "private": true,
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "Self-hosted notes and tasks. Imports and exports Standard Notes plaintext and Vikunja.",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev:server": "pnpm --filter @turbokeep/server dev",
+    "dev:web": "pnpm --filter @turbokeep/web dev",
+    "build": "pnpm --filter @turbokeep/web build && pnpm --filter @turbokeep/server build",
+    "typecheck": "pnpm -r exec tsc --noEmit",
+    "test": "pnpm -r test",
+    "start": "node apps/server/dist/server.mjs"
+  }
+}

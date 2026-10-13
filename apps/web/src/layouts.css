@@ -1,0 +1,49 @@
+/*
+ * Layouts: where the app's pages are listed (<html data-layout>). They are CSS over THIS app's bar markup, so they live here and not in turbothemes.
+ * Every rule is scoped to its own [data-layout]. Loaded after the themes' stylesheet (lib/appearance.ts) so they win ties with a style.
+ */
+
+/* ---- rail ---- */
+/* ---- Layouts (lib/layout.ts): where the pages are listed, whatever the look. ---- */
+/* Icon rail */
+[data-layout="rail"] .bt-side.bt-shell { width: 4.5rem; padding: 0.75rem 0.5rem; align-items: center; }
+[data-layout="rail"] .bt-side .bt-label-text { display: none; }
+[data-layout="rail"] .bt-side .bt-nav { justify-content: center; padding: 0.65rem; width: 100%; }
+[data-layout="rail"] .bt-side .bt-brand { padding: 0; margin-bottom: 0.5rem; justify-content: center; }
+[data-layout="rail"] .bt-side .bt-brand img { display: block; }
+[data-layout="rail"] .bt-side > div:last-child { padding: 0; justify-content: center; }
+
+/* ---- topbar ---- */
+[data-layout="topbar"] .bt-toplink { font-size: 0.75rem; line-height: 1rem; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: hsl(var(--muted)); transition: color var(--dur) var(--ease); }
+[data-layout="topbar"] .bt-toplink:hover { color: color-mix(in srgb, hsl(var(--fg)) 80%, hsl(var(--bg))); }
+[data-layout="topbar"] .bt-toplink[aria-current="page"] { color: hsl(var(--fg)); }
+[data-layout="topbar"] .bt-toplinks { order: 2; flex: 1 0 100%; }
+/* Top tabs: no side bar, every page along the top */
+@media (min-width: 768px) {
+  [data-layout="topbar"] .bt-topin { max-width: none; margin: 0; gap: 1rem; }
+  [data-layout="topbar"] .bt-topin .bt-search { flex: 0 0 14rem; margin-left: auto; }
+  [data-layout="topbar"] .bt-content { max-width: none; }
+}
+@media (min-width: 768px) and (max-width: 1199.98px) {
+  [data-layout="topbar"] .bt-topin { flex-wrap: wrap; row-gap: 0.5rem; }
+  [data-layout="topbar"] .bt-toplinks { order: 2; flex: 1 0 100%; }
+  [data-layout="topbar"] .bt-topin .bt-search { flex: 1 1 8rem; margin-left: 0; }
+}
+/* the tabs are pills (like the layout's own highlight in Liquid Glass), so they read on any bar: a soft fill under the page you are on, a wash on hover */
+[data-layout="topbar"] .bt-toplink { font-size: 0.8125rem; font-weight: 600; text-transform: none; letter-spacing: 0; color: color-mix(in srgb, hsl(var(--fg)) 72%, hsl(var(--bg))); padding: 0.35rem 0.85rem; border-radius: 9999px; border: 0; transition: color var(--dur) var(--ease), background var(--dur) var(--ease); }
+[data-layout="topbar"] .bt-toplink:hover { color: hsl(var(--fg)); background: hsl(var(--hover)); }
+[data-layout="topbar"] .bt-toplink[aria-current="page"] { color: hsl(var(--fg)); background: color-mix(in srgb, hsl(var(--accent)) 24%, hsl(var(--raised))); box-shadow: inset 0 0 0 1px color-mix(in srgb, hsl(var(--accent)) 40%, transparent); }
+[data-layout="topbar"] .bt-toplinks { gap: 0.25rem; }
+
+/* ---- dock ---- */
+/* Bottom dock: on a wide window every page has its own button and the bar fills the bottom edge (no "More"); only Liquid Glass draws it as a floating pill, and that is the theme's own rule */
+@media (min-width: 768px) {
+  [data-layout="dock"] .bt-tabbar { margin: 0; overflow-x: auto; }
+  [data-layout="dock"] .bt-tabbar .bt-tab { padding-block: 0.5rem; font-size: 11px; min-width: 4.25rem; }
+  [data-layout="dock"] .bt-content { max-width: 80rem; }
+}
+
+/* Liquid Glass floats its bars: with the dock layout the page needs room under it */
+@media (min-width: 768px) {
+  :is(html, div)[data-ui="liquid"][data-layout="dock"] main { padding-bottom: 5rem; }
+}
