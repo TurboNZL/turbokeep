@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server';
 import { randomBytes } from 'node:crypto';
 import { createApp, VERSION } from './app.ts';
-import { loadConfig } from './config.ts';
+import { loadConfig, openHint } from './config.ts';
 import { get, openDb } from './db.ts';
 import { createUser } from './store.ts';
 import { hashPassword } from './auth.ts';
@@ -20,4 +20,7 @@ if (!get(db, 'select 1 x from users limit 1')) {
   }
 }
 
-serve({ fetch: createApp(db, cfg, setup).fetch, port: cfg.port, hostname: cfg.host }, (i) => console.log(`TurboKeep ${VERSION} listening on ${cfg.host}:${i.port}, data in ${cfg.dataDir}`));
+serve({ fetch: createApp(db, cfg, setup).fetch, port: cfg.port, hostname: cfg.host }, (i) => {
+  console.log(`TurboKeep ${VERSION} listening on ${cfg.host}:${i.port}, data in ${cfg.dataDir}`);
+  console.log(openHint(process.env, { host: cfg.host, port: i.port }));
+});

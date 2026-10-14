@@ -9,6 +9,8 @@ services:
     environment:
       # Behind a tunnel or reverse proxy (the default): use X-Forwarded-Proto/Host and CF-Connecting-IP. Set to false when it faces the network directly.
       TURBOKEEP_TRUST_PROXY: "true"
+      # Only so the start-up message can say which address to open (the server itself listens on 8080 inside the container).
+      TURBOKEEP_PUBLISHED: "${TURBOKEEP_BIND:-0.0.0.0}:${TURBOKEEP_PORT:-47901}"
       # Let anyone who can reach the page create an account. Off: only the first account, created on first run.
       TURBOKEEP_ALLOW_SIGNUP: "false"
       # Optional: skip the setup screen by creating the first account from these.
