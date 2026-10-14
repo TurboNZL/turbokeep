@@ -1,13 +1,14 @@
 {
   "engine": {
     "repo": "TurboNZL/turboengine",
-    "ref": "378766815264ca91db67a0ec487dcd1a4648971a"
+    "ref": "fca550787381f0f1c04cdeb7372f8097bef5f5b0"
   },
   "modules": [
     "release-pipeline",
     "appearance",
     "guides-and-docs",
     "settings-shell",
+    "logos",
     "docker-self-host"
   ],
   "themes": "on",

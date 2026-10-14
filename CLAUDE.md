@@ -35,17 +35,20 @@ This app is pinned to TurboNZL/turboengine (see `.turboengine.json`; `docs/devel
 - Clean-copy production build (`pnpm install --frozen-lockfile && pnpm build`) run as the Docker image would run it.
 
 ## Not verified (say so, don't claim)
-- The Docker image itself and the compose file were never built or run (no Docker daemon in the session): the Dockerfile's steps were replayed by hand.
+- The Docker image and the compose file were never RUN as containers (no Docker daemon in the session). The CI `docker` job builds the image and passed on GitHub on 2026-10-13, so the Dockerfile builds; start-up, the volume permissions and the health check are untested.
 - Cloudflare Tunnel was never run against real Cloudflare; the guide follows Cloudflare's documented behaviour (verified by search, not by traffic).
 - Standard Notes' own import of our JSON; Vikunja 1.x with `relations=all`.
-- The GitHub workflows (never run: the repository had no commits).
+- `release.yml` (first run pending); `check.yml`'s `ts` job failed once for `pnpm/action-setup` given both `version:` and `packageManager` (fixed: only `packageManager`).
 
 ## Hard-won gotchas
 - Vikunja ≤0.24's file import is `PUT .../migration/vikunja-file/migrate`; its related-task lookup is per project (duplicates otherwise).
 - `pkill -f <pattern>` in a tool call kills the tool's own shell when the pattern is in its command line.
 - Tunnels: trust `CF-Connecting-IP`, never the first `X-Forwarded-For` entry; check same-site with `Sec-Fetch-Site` first (Host may be rewritten).
 - turbothemes is a git dependency on a subfolder; the lockfile records a codeload tarball URL, which CI and Docker can fetch without SSH (the engine repo is public).
+- `pnpm/action-setup@v4` fails in 0 s if the workflow passes `version:` AND `package.json` has `packageManager`: use only `packageManager`.
+- ghcr packages start private: make `turbokeep` public in GitHub Packages or `docker compose pull` is denied.
 - Engine moved while this was built (cloudflare-access etc. arrived): re-read `CLAUDE.md` of the engine before starting.
 
 ## Session log
+- 2026-10-14: re-pinned to engine `fca5507` (adds `logos`, `docker-self-host`, picker docs: the Appearance mock preview already follows them); logo generated (check-mark emblem); CI pnpm fix; first release.
 - 2026-10-13: first build from the engine at `3787668`: server, formats, client, Docker/CI, guides; engine module `docker-self-host` created.
