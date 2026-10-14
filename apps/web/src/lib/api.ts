@@ -31,6 +31,7 @@ export interface Task {
 export type NoteDetail = Omit<Note, 'task'> & { task: Task | null };
 export interface NoteParams { view?: string; kind?: string; tag?: string; q?: string; done?: string; due?: string; favorites?: string; project?: string }
 export interface Report { warnings: string[]; dry: boolean; [k: string]: number | string[] | boolean }
+export interface ServerUpdate { available: boolean; restarts: boolean; status: 'idle' | 'running' | 'done' | 'error'; log: string[]; startedAt: number | null; restarting: boolean }
 export interface SetupInfo { needsSetup: boolean; setupCodeRequired: boolean; allowSignup: boolean; version: string }
 
 export const api = {
@@ -38,6 +39,8 @@ export const api = {
   me: () => req<{ user: { id: number; username: string } }>('GET', '/api/auth/me'),
   login: (username: string, password: string) => req<{ user: { id: number; username: string } }>('POST', '/api/auth/login', { username, password }),
   register: (username: string, password: string, setupCode?: string) => req<{ user: { id: number; username: string } }>('POST', '/api/auth/register', { username, password, setupCode }),
+  updateInfo: () => req<ServerUpdate>('GET', '/api/admin/update'),
+  startUpdate: () => req<unknown>('POST', '/api/admin/update'),
   logout: () => req<unknown>('POST', '/api/auth/logout'),
   changePassword: (current: string, next: string) => req<unknown>('POST', '/api/auth/password', { current, next }),
   tokens: () => req<{ id: string; name: string; createdAt: string; lastUsed: string | null }[]>('GET', '/api/tokens'),

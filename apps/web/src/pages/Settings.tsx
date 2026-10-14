@@ -2,6 +2,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { AppearanceLayout, WallpaperCard } from '../components/AppearanceCard.tsx';
 import { Select } from '../components/Select.tsx';
+import { ServerUpdateCard } from '../components/ServerUpdate.tsx';
 import { Section } from '../components/Section.tsx';
 import { GuidesTab } from '../components/GuidesTab.tsx';
 import { ImportExport } from '../components/ImportExport.tsx';
@@ -40,11 +41,14 @@ export function SettingsPage() {
       {tab === 'guides' && <GuidesTab />}
 
       {tab === 'app' && (
+        <>
         <Section title="TurboKeep">
           <p className="text-sm">Version <span className="font-mono">{version || '…'}</span>. Self-hosted notes and tasks; your data lives in the server's data folder.</p>
           <p className="text-sm text-muted">The Guides tab explains how to update the server.</p>
           <p className="text-sm"><a className="underline" href="https://github.com/TurboNZL/turbokeep/releases" target="_blank" rel="noreferrer noopener">Releases</a></p>
-        </Section>)}
+        </Section>
+        <ServerUpdateCard />
+        </>)}
     </div>
   );
 }

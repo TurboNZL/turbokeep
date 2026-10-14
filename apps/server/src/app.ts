@@ -8,6 +8,7 @@ import { COOKIE, LoginLimiter, type AuthUser, clientIp, createSession, hashPassw
 import * as S from './store.ts';
 import { exportStandardNotes, exportTurboKeep, exportVikunja, importStandardNotes, importTurboKeep, importVikunja } from './io.ts';
 import { VERSION } from './version.ts';
+import type { Updater } from './update.ts';
 
 export { VERSION };
 type Env = { Variables: { user: AuthUser } };
@@ -17,7 +18,7 @@ const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js
 const int = (v: string | undefined) => { const n = Number(v); return Number.isInteger(n) && n > 0 ? n : undefined; };
 const USERNAME = /^[A-Za-z0-9_.-]{2,40}$/;
 
-export function createApp(db: DB, cfg: Config, setup: { code: string | null } = { code: null }) {
+export function createApp(db: DB, cfg: Config, setup: { code: string | null } = { code: null }, updater?: Updater) {
   const app = new Hono<Env>();
   const limiter = new LoginLimiter();
   const auth = requireAuth(db, cfg);
@@ -82,7 +83,19 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
     deleteCookie(c, COOKIE, { path: '/' });
     return c.json({ ok: true });
   });
-  app.get('/api/auth/me', (c) => c.json({ user: { id: c.get('user').id, username: c.get('user').username } }));
+  // the owner is the first account (the one made with the setup code): only they may update the server
+  const isOwner = (id: number) => get(db, 'select min(id) m from users')?.m === id;
+  app.get('/api/auth/me', (c) => c.json({ user: { id: c.get('user').id, username: c.get('user').username, owner: isOwner(c.get('user').id) } }));
+  app.get('/api/admin/update', (c) => {
+    if (!isOwner(c.get('user').id)) throw new S.HttpError(403, 'Only the owner (the first account) can update the server.');
+    return c.json({ available: !!updater?.available, restarts: !!updater?.restarts, ...(updater?.state() ?? { status: 'idle', log: [], startedAt: null, restarting: false }) });
+  });
+  app.post('/api/admin/update', (c) => {
+    if (!isOwner(c.get('user').id)) throw new S.HttpError(403, 'Only the owner (the first account) can update the server.');
+    if (!updater?.available) throw new S.HttpError(404, 'This server cannot update itself.');
+    if (!updater.start()) throw new S.HttpError(409, 'An update is already running.');
+    return c.json({ ok: true }, 202);
+  });
   app.post('/api/auth/password', async (c) => {
     const u = c.get('user'), b = await c.req.json().catch(() => ({}));
     const row = get(db, 'select * from users where id = ?', u.id)!;
