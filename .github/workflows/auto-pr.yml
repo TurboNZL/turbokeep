@@ -23,5 +23,5 @@ jobs:
           git fetch origin main
           if [ -z "$(git log origin/main..HEAD --oneline)" ]; then echo "Nothing new compared with main."; exit 0; fi
           title=$(git log -1 --format=%s)
-          { echo "Opened automatically for \`$BRANCH\`. Merging it builds and publishes a new release (Docker image and a Node tarball)."; echo; echo "Changes:"; git log origin/main..HEAD --format='- %s' | head -30; } > body.md
+          { echo "Opened automatically for \`$BRANCH\`. Merging it publishes a new release (with the Android app)."; echo; echo "Changes:"; git log origin/main..HEAD --format='- %s' | head -30; } > body.md
           gh pr create --base main --head "$BRANCH" --title "$title" --body-file body.md

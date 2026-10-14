@@ -10,7 +10,7 @@ export interface Guide { name: string; title: string; group: 'Start' | 'Using it
 const TITLE: Record<string, [string, Guide['group']]> = {
   GETTING_STARTED: ['Getting started', 'Start'], README: ['About TurboKeep', 'Start'],
   IMPORT_EXPORT: ['Import and export', 'Using it'], API: ['API and tokens', 'Using it'],
-  SELF_HOSTING: ['Self-hosting with Docker', 'Hosting'], CLOUDFLARE_TUNNEL: ['Cloudflare Tunnel', 'Hosting'], BACKUP_AND_UPDATE: ['Backup and updating', 'Hosting'],
+  SELF_HOSTING: ['Self-hosting', 'Hosting'], CLOUDFLARE_TUNNEL: ['Cloudflare Tunnel', 'Hosting'], BACKUP_AND_UPDATE: ['Backup and updating', 'Hosting'],
 };
 const ORDER = Object.keys(TITLE);
 

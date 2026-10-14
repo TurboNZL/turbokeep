@@ -2,6 +2,10 @@
 
 Settings > **Import & export**. Every import has a **Preview** that counts what would be added without writing anything; **Import** unlocks after a preview.
 
+## Everything: TurboKeep
+**Export:** *TurboKeep backup (.zip)* holds one file, `turbokeep.json`, with every note and task of your account together: text, tags, pins, archive and trash, dates, and for tasks the list, priority, dates, reminders, repeat, comments and relations. It is the way to move to another TurboKeep server or to keep a backup you can read (it is plain JSON in a zip).
+**Import:** pick that zip (or the `.json`), **Preview**, **Import**. Notes already on the server (same id) are skipped, so importing the same backup twice changes nothing; lists are matched by name. A file made by a *newer* TurboKeep, or by something else, is refused with a message. Accounts, passwords and API tokens are never part of it.
+
 ## Notes: Standard Notes
 ### Getting your notes out of Standard Notes
 In the Standard Notes app: **Account > Data Backups > Download backup > Decrypted** (not the encrypted file: that one needs your keys and TurboKeep cannot read it; it says so). You get a zip containing `Standard Notes Backup and Import File.txt` (JSON, with tags, pins, archive and trash state, dates) and a folder `Items/Note/` with one `.txt` per note.
@@ -31,12 +35,12 @@ The layout and field names follow what the Standard Notes source writes and what
 Vikunja: **Settings > Export your data**, enter your password, wait for the email or the download link, and take the zip (it holds `data.json`, `filters.json`, `VERSION`). You can also pick `data.json` alone.
 
 ### Into TurboKeep
-Projects (with their parents), tasks (title, description, done and when, due, start and end date, priority, percent done, colour, star, repeat), labels, reminders (absolute and relative), task relations and comments come across. Not carried over: **attachments, assignees, kanban buckets and views, saved filters, project backgrounds, sharing**. The import says how many attachments were left out. Vikunja stores descriptions and comments as HTML; they become plain text (paragraphs, line breaks, lists as `- `, links as `text (url)`).
+Projects (with their parents) and tasks (title, description, done and when, due, start and end date, priority, percent done, colour, star, repeat): **each task becomes a note that is a task** (the title is the note's title, the description its text), and Vikunja's labels become **tags**. Reminders (absolute and relative), task relations and comments come across too. Not carried over: **attachments, assignees, kanban buckets and views, saved filters, project backgrounds, sharing**. The import says how many attachments were left out. Vikunja stores descriptions and comments as HTML; they become plain text (paragraphs, line breaks, lists as `- `, links as `text (url)`).
 
-Vikunja's *Inbox* project is merged into yours instead of making a second one. Importing the same file twice makes the tasks twice (as it would in Vikunja itself).
+Vikunja's *Inbox* project is merged into yours instead of making a second one. Importing the same file twice makes the tasks twice (as it would in Vikunja itself); use the TurboKeep backup when you want a repeatable import.
 
 ### Out of TurboKeep, into Vikunja
-Export **Vikunja export (.zip)**, then in Vikunja: **Settings > Import from other services > Vikunja file**. Tasks arrive with projects, labels, reminders, repeats, relations and comments; descriptions become simple HTML paragraphs. This was checked by importing the file into a real Vikunja server (v0.24.6) and reading a real Vikunja export back into TurboKeep.
+Export **Vikunja export (.zip)**, then in Vikunja: **Settings > Import from other services > Vikunja file**. Tasks arrive with projects, labels (from the note's tags), reminders, repeats, relations and comments; descriptions become simple HTML paragraphs. This was checked by importing the file into a real Vikunja server (v0.24.6) and reading a real Vikunja export back into TurboKeep.
 
 **Relations between different projects are left out by default.** Vikunja 0.24 and older reads a project's tasks one at a time and, when a task names a related task it has not created *in that project* yet, creates it as a new task, so you would get duplicates (this affects Vikunja's own exports too). TurboKeep therefore exports relations only inside a project, and says how many it left out. Tick *Keep relations between tasks in different projects* if your Vikunja is newer and fixes this (Vikunja's current source resolves them by id); if tasks appear twice, import the default file instead. Each relation pair is written once (from the later task to the earlier one); Vikunja adds the other direction itself.
 
