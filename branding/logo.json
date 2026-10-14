@@ -6,9 +6,62 @@
     "svg": "apps/web/public/icon.svg",
     "mono": "apps/web/public/icon-mono.svg",
     "png": [
-      ["apps/web/public/icon-512.png", 512],
-      ["apps/web/public/icon-192.png", 192],
-      ["apps/web/public/favicon-32.png", 32]
-    ]
+      [
+        "apps/web/public/icon-512.png",
+        512
+      ],
+      [
+        "apps/web/public/icon-192.png",
+        192
+      ],
+      [
+        "apps/web/public/favicon-32.png",
+        32
+      ],
+      [
+        "apps/android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
+        48
+      ],
+      [
+        "apps/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png",
+        48
+      ],
+      [
+        "apps/android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
+        72
+      ],
+      [
+        "apps/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png",
+        72
+      ],
+      [
+        "apps/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+        96
+      ],
+      [
+        "apps/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png",
+        96
+      ],
+      [
+        "apps/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png",
+        144
+      ],
+      [
+        "apps/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png",
+        144
+      ],
+      [
+        "apps/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+        192
+      ],
+      [
+        "apps/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png",
+        192
+      ]
+    ],
+    "android": {
+      "res": "apps/android/app/src/main/res",
+      "stat": "ic_stat_turbokeep"
+    }
   }
 }

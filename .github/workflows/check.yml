@@ -17,3 +17,13 @@ jobs:
       - run: pnpm --filter @turbokeep/web exec tsc --noEmit
       - run: pnpm --filter @turbokeep/web test
       - run: pnpm build
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.9' }
+      - run: gradle -p apps/android :app:testDebugUnitTest :app:assembleDebug

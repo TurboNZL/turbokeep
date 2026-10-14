@@ -1,4 +1,5 @@
 /** The server's JSON API. Same origin, relative URLs and the session cookie, so it works behind any proxy or Cloudflare tunnel with no setup. */
+import { android, saveWithApp } from './native.ts';
 export class ApiError extends Error {
   constructor(public status: number, message: string, public body?: any) { super(message); }
 }
@@ -90,6 +91,7 @@ export async function download(path: string, fallbackName: string): Promise<{ dr
   return { dropped: Number(res.headers.get('x-dropped-relations') ?? 0) };
 }
 export function saveBlob(blob: Blob, name: string) {
+  if (android()) { void saveWithApp(blob, name); return; }
   const url = URL.createObjectURL(blob);
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
   document.body.appendChild(a); a.click(); a.remove();

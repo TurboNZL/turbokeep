@@ -2,6 +2,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { AppearanceLayout, WallpaperCard } from '../components/AppearanceCard.tsx';
 import { Select } from '../components/Select.tsx';
+import { AndroidCard } from '../components/AndroidCard.tsx';
 import { ServerUpdateCard } from '../components/ServerUpdate.tsx';
 import { Section } from '../components/Section.tsx';
 import { GuidesTab } from '../components/GuidesTab.tsx';
@@ -47,6 +48,7 @@ export function SettingsPage() {
           <p className="text-sm text-muted">The Guides tab explains how to update the server.</p>
           <p className="text-sm"><a className="underline" href="https://github.com/TurboNZL/turbokeep/releases" target="_blank" rel="noreferrer noopener">Releases</a></p>
         </Section>
+        <AndroidCard />
         <ServerUpdateCard />
         </>)}
     </div>

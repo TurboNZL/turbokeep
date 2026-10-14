@@ -31,3 +31,21 @@ jobs:
       - name: Create the release (this also creates the tag)
         run: gh release create "${{ steps.next.outputs.tag }}" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "${{ steps.next.outputs.tag }}" --generate-notes
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
+
+  android:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.9' }
+      - name: Build the APK
+        run: |
+          TAG='${{ needs.release.outputs.tag }}'
+          VERSION="${TAG#v}"
+          gradle -p apps/android :app:assembleRelease -PappVersion="$VERSION"
+          cp apps/android/app/build/outputs/apk/release/app-release.apk "turbokeep-$VERSION-android.apk"
+          gh release upload "$TAG" "turbokeep-$VERSION-android.apk" --clobber
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }

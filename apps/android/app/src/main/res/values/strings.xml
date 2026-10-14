@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">TurboKeep</string>
+    <string name="widget_name">TurboKeep tasks</string>
+    <string name="widget_description">Your open tasks. Tick one off, or add a task or note.</string>
+</resources>
