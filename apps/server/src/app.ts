@@ -6,9 +6,10 @@ import type { Config } from './config.ts';
 import { type DB, all, get, run } from './db.ts';
 import { COOKIE, LoginLimiter, type AuthUser, clientIp, createSession, hashPassword, isHttps, requireAuth, verifyPassword } from './auth.ts';
 import * as S from './store.ts';
-import { exportStandardNotes, exportVikunja, importStandardNotes, importVikunja } from './io.ts';
+import { exportStandardNotes, exportTurboKeep, exportVikunja, importStandardNotes, importTurboKeep, importVikunja } from './io.ts';
+import { VERSION } from './version.ts';
 
-export const VERSION = process.env.TURBOKEEP_VERSION ?? 'dev';
+export { VERSION };
 type Env = { Variables: { user: AuthUser } };
 
 const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff', '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8', '.map': 'application/json' };
@@ -144,6 +145,7 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
   const stamp = () => new Date().toISOString().slice(0, 10);
   const download = (c: any, data: Uint8Array, name: string) => c.body(data, 200, { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${name}"` });
   app.get('/api/export/standardnotes', (c) => download(c, exportStandardNotes(db, uid(c), c.req.query('plain') === '1'), `turbokeep-standard-notes-${stamp()}${c.req.query('plain') === '1' ? '-plaintext' : ''}.zip`));
+  app.get('/api/export/turbokeep', (c) => download(c, exportTurboKeep(db, uid(c)), `turbokeep-${stamp()}.zip`));
   app.get('/api/export/vikunja', (c) => {
     const { zip, droppedRelations } = exportVikunja(db, c.get('user'), { crossProject: c.req.query('relations') === 'all' });
     c.header('X-Dropped-Relations', String(droppedRelations)); // see formats/vikunja.ts: why relations between projects are left out by default
@@ -162,6 +164,7 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
     return out;
   }
   app.post('/api/import/standardnotes', async (c) => c.json(importStandardNotes(db, uid(c), await uploads(c), c.req.query('dry') === '1')));
+  app.post('/api/import/turbokeep', async (c) => c.json(importTurboKeep(db, c.get('user'), (await uploads(c))[0]!.data, c.req.query('dry') === '1')));
   app.post('/api/import/vikunja', async (c) => c.json(importVikunja(db, c.get('user'), (await uploads(c))[0]!.data, c.req.query('dry') === '1')));
 
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));

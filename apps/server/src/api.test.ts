@@ -303,3 +303,89 @@ describe('a note can be a task', () => {
     expect((await json('GET', `/api/tasks/${a.id}`)).body.related.subtask[0].title).toBe('Renamed child');
   });
 });
+
+describe('TurboKeep backup (notes and tasks together)', () => {
+  async function seed() {
+    const work = (await json('POST', '/api/projects', { title: 'Work', hexColor: 'ff8800' })).body;
+    const sub = (await json('POST', '/api/projects', { title: 'Sub', parentId: work.id, isArchived: false })).body;
+    const note = (await json('POST', '/api/notes', { title: 'Meeting notes', text: 'agenda', tags: ['work'], pinned: true, noteType: 'markdown' })).body;
+    const gone = (await json('POST', '/api/notes', { title: 'Old', text: 'x', archived: true })).body;
+    const a = (await json('POST', '/api/tasks', { title: 'Write report', description: 'draft first', projectId: work.id, tags: ['work', 'urgent'], priority: 4, dueDate: '2031-03-04T05:06:07Z', repeatAfter: 604800, reminders: [{ reminder: '2031-03-03T05:06:07Z' }, { relativeTo: 'due_date', relativePeriod: -3600 }] })).body;
+    const b = (await json('POST', '/api/tasks', { title: 'Collect data', projectId: sub.id, done: true })).body;
+    await json('POST', `/api/tasks/${a.id}/relations`, { otherId: b.id, kind: 'subtask' });
+    await json('POST', `/api/tasks/${a.id}/comments`, { comment: 'started' });
+    const trashed = (await json('POST', '/api/notes', { title: 'In the trash', trashed: true })).body;
+    return { work, sub, note, gone, a, b, trashed };
+  }
+  const exportZip = async () => new Uint8Array(await (await call('GET', '/api/export/turbokeep')).arrayBuffer());
+  const second = async () => {
+    const app2 = createApp(openDb(':memory:'), cfg, { code: null });
+    const reg = await app2.request('/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'second', password: 'longenoughpassword' }) });
+    const ck = reg.headers.get('set-cookie')!.split(';')[0]!;
+    return { app2, get: async (p: string) => (await (await app2.request(p, { headers: { cookie: ck } })).json()) as any, post: (p: string, d: FormData) => app2.request(p, { method: 'POST', headers: { cookie: ck }, body: d }) };
+  };
+
+  it('exports one file with the format and version, everything in it, the trash and archive included', async () => {
+    await seed();
+    const zip = await exportZip();
+    expect(Object.keys(unzipSync(zip))).toEqual(['turbokeep.json']);
+    const j = JSON.parse(new TextDecoder().decode(unzipSync(zip)['turbokeep.json']));
+    expect(j).toMatchObject({ format: 'turbokeep', version: 1 });
+    expect(j.notes).toHaveLength(5); // Meeting notes, Old (archived), In the trash, and the notes of the 2 tasks
+    expect(j.notes.filter((n: any) => n.task)).toHaveLength(2);
+    expect(j.notes.find((n: any) => n.title === 'Write report')).toMatchObject({ text: 'draft first', tags: ['urgent', 'work'], task: { priority: 4, repeatAfter: 604800, comments: [{ comment: 'started' }] } });
+    expect(j.relations.length).toBe(2); // both directions are stored
+    expect(j.projects.map((p: any) => p.title)).toEqual(['Inbox', 'Work', 'Sub']);
+  });
+
+  it('into another account: the same notes, tasks, projects, tags, reminders, comments and relations', async () => {
+    await seed();
+    const zip = await exportZip();
+    const b = await second();
+    const dry = await (await b.post('/api/import/turbokeep?dry=1', upload('x.zip', zip))).json() as any;
+    expect(dry).toMatchObject({ dry: true, notes: 5, tasks: 2, projects: 2, comments: 1, relations: 1 });
+    expect((await b.get('/api/notes?view=all')).length).toBe(0); // the preview wrote nothing
+    const real = await (await b.post('/api/import/turbokeep', upload('x.zip', zip))).json() as any;
+    expect(real).toMatchObject({ notes: 5, tasks: 2, projects: 2, comments: 1, relations: 1, skipped: 0, dry: false });
+    const notes = await b.get('/api/notes?view=all');
+    expect(notes.map((n: any) => [n.title, n.pinned, n.archived, n.trashed, !!n.task]).sort()).toEqual([
+      ['Collect data', false, false, false, true], ['In the trash', false, false, true, false], ['Meeting notes', true, false, false, false], ['Old', false, true, false, false], ['Write report', false, false, false, true],
+    ]);
+    const report = notes.find((n: any) => n.title === 'Write report');
+    const detail = await b.get(`/api/notes/${report.id}`);
+    expect(detail).toMatchObject({ text: 'draft first', tags: ['urgent', 'work'], noteType: 'plain-text' });
+    expect(detail.task).toMatchObject({ priority: 4, repeatAfter: 604800, dueDate: '2031-03-04T05:06:07.000Z', comments: [{ comment: 'started' }] });
+    expect(detail.task.reminders).toHaveLength(2);
+    expect(detail.task.related.subtask[0].title).toBe('Collect data');
+    const projects = await b.get('/api/projects');
+    const work = projects.find((p: any) => p.title === 'Work'), sub = projects.find((p: any) => p.title === 'Sub');
+    expect(work.hexColor).toBe('ff8800'); expect(sub.parentId).toBe(work.id);
+    expect(detail.task.projectId).toBe(work.id);
+    expect((await b.get('/api/notes?kind=notes')).find((n: any) => n.title === 'Meeting notes')).toMatchObject({ pinned: true, noteType: 'markdown' });
+  });
+
+  it('importing it again changes nothing, and after deleting everything it restores everything', async () => {
+    await seed();
+    const zip = await exportZip();
+    const again = (await json('POST', '/api/import/turbokeep', upload('x.zip', zip))).body;
+    expect(again).toMatchObject({ notes: 0, tasks: 0, projects: 0, skipped: 5 });
+    expect((await json('GET', '/api/notes?view=all')).body).toHaveLength(5);
+    for (const n of (await json('GET', '/api/notes?view=all')).body) await json('DELETE', `/api/notes/${n.id}`);
+    for (const p of (await json('GET', '/api/projects')).body) if (!p.isInbox) await json('DELETE', `/api/projects/${p.id}`);
+    expect((await json('GET', '/api/notes?view=all')).body).toHaveLength(0);
+    const back = (await json('POST', '/api/import/turbokeep', upload('x.zip', zip))).body;
+    expect(back).toMatchObject({ notes: 5, tasks: 2, projects: 2, relations: 1 });
+    expect((await json('GET', '/api/notes?kind=tasks&done=false')).body.map((n: any) => n.title)).toEqual(['Write report']);
+  });
+
+  it('refuses what is not a backup, or is from a newer TurboKeep, with a message and writes nothing', async () => {
+    const f = (o: object) => upload('b.json', strToU8(JSON.stringify(o)));
+    expect((await json('POST', '/api/import/turbokeep', upload('x.json', strToU8('nope')))).status).toBe(400);
+    const wrong = await json('POST', '/api/import/turbokeep', f({ format: 'other', version: 1 }));
+    expect(wrong.status).toBe(400); expect(wrong.body.error).toMatch(/not a TurboKeep backup/);
+    const newer = await json('POST', '/api/import/turbokeep', f({ format: 'turbokeep', version: 99, notes: [] }));
+    expect(newer.status).toBe(400); expect(newer.body.error).toMatch(/newer TurboKeep/);
+    const bad = await json('POST', '/api/import/turbokeep', f({ format: 'turbokeep', version: 1, notes: [{ id: 'not-a-uuid', title: 'x' }, { id: '5b3f2c1e-9a4d-4d0e-8f6b-2a1c3d4e5f60', title: 'ok', text: 't' }] }));
+    expect(bad.body).toMatchObject({ notes: 1 }); expect(bad.body.warnings[0]).toMatch(/skipped/);
+  });
+});
