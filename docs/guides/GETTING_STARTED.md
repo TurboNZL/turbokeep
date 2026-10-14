@@ -10,7 +10,7 @@ docker compose up -d
 docker compose logs turbokeep
 ```
 
-The log prints a **setup code** the first time. Open the address (<http://localhost:47901> on the same machine), type a username, a password of at least ten characters and the setup code. That makes the first account. The code exists because a server that is already reachable from the internet (a tunnel) must not be claimable by whoever opens the page first.
+The log prints a **setup code** the first time. Open the address: <http://localhost:47901> on the same machine, or `http://<the server's address>:47901` from another computer (a Raspberry Pi's IP address, or `raspberrypi.local`), type a username, a password of at least ten characters and the setup code. That makes the first account. The code exists because a server that is already reachable from the internet (a tunnel) must not be claimable by whoever opens the page first.
 
 Other ways to run it, and every setting: [SELF_HOSTING.md](SELF_HOSTING.md). To reach it from outside your home: [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md).
 

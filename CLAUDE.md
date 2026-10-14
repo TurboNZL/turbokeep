@@ -44,6 +44,7 @@ This app is pinned to TurboNZL/turboengine (see `.turboengine.json`; `docs/devel
 ## Hard-won gotchas
 - Vikunja ≤0.24's file import is `PUT .../migration/vikunja-file/migrate`; its related-task lookup is per project (duplicates otherwise).
 - **Compose reads `${VAR}` for every service, even one in an inactive profile**: `${TUNNEL_TOKEN:?...}` broke a plain `docker compose up` on the Pi (found by the owner, 2026-10-14). Use `${VAR:-}`; `deploy.test.ts` guards it.
+- **A port published on `127.0.0.1` is invisible to every other machine.** The first compose file did that and the owner could not open his Pi from his PC (2026-10-14). Default is now `TURBOKEEP_BIND=0.0.0.0`; set `127.0.0.1` only once a tunnel works. `deploy.test.ts` guards it.
 - **Ports:** TurboKeep is 47901 on the host (8080 only inside the container); the engine's `docs/SERVER_APPS.md` lists every app's port, and two programs cannot share one.
 - `pkill -f <pattern>` in a tool call kills the tool's own shell when the pattern is in its command line.
 - Tunnels: trust `CF-Connecting-IP`, never the first `X-Forwarded-For` entry; check same-site with `Sec-Fetch-Site` first (Host may be rewritten).
@@ -53,6 +54,7 @@ This app is pinned to TurboNZL/turboengine (see `.turboengine.json`; `docs/devel
 - Engine moved while this was built (cloudflare-access etc. arrived): re-read `CLAUDE.md` of the engine before starting.
 
 ## Session log
+- 2026-10-14 (3): the Pi's port 47901 was unreachable from the owner's PC because compose published on 127.0.0.1; added `TURBOKEEP_BIND` (default 0.0.0.0), docs say how to lock it down after the tunnel works.
 - 2026-10-14 (2): owner's Pi: `docker compose up` failed on the required TUNNEL_TOKEN even without the tunnel profile; fixed (`:-`), host port made configurable and moved to 47901; registry of ports added to the engine.
 - 2026-10-14: re-pinned to engine `fca5507` (adds `logos`, `docker-self-host`, picker docs: the Appearance mock preview already follows them); logo generated (check-mark emblem); CI pnpm fix; first release.
 - 2026-10-13: first build from the engine at `3787668`: server, formats, client, Docker/CI, guides; engine module `docker-self-host` created.

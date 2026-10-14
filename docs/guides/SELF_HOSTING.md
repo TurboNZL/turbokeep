@@ -7,7 +7,7 @@ TurboKeep is one container: a Node server that also serves the web page. It list
 git clone https://github.com/TurboNZL/turbokeep && cd turbokeep
 docker compose up -d
 ```
-The image is `ghcr.io/turbonzl/turbokeep` (`:latest`, or a version such as `:2026.10.0`; amd64 and arm64, so a Raspberry Pi 4 or 5 works). The compose file publishes the port on `127.0.0.1` only; remove the `127.0.0.1:` from the `ports:` line to reach it from your LAN.
+The image is `ghcr.io/turbonzl/turbokeep` (`:latest`, or a version such as `:2026.10.0`; amd64 and arm64, so a Raspberry Pi 4 or 5 works). The compose file publishes it on every network interface by default, so from another computer you open `http://<the server's address>:47901` (for a Raspberry Pi, its IP address or `raspberrypi.local`). To keep it reachable from the machine itself only (for example once a tunnel works), set `TURBOKEEP_BIND=127.0.0.1` in `.env`.
 
 **Every program on a machine needs its own port.** Two things cannot listen on the same one: the second fails to start ("address already in use"). TurboKeep uses 47901 so it does not collide with the usual 8080, and you can move it by setting `TURBOKEEP_PORT=` in `.env` (compose) or as an environment variable (no Docker). Check what is taken with `ss -ltn` (Linux) before picking a number. The data lives in the named volume `turbokeep-data`.
 
@@ -16,6 +16,7 @@ If `docker compose pull` answers *denied* or *unauthorized*, the package on GitH
 ## Settings (environment variables)
 | Variable | Default | What |
 |---|---|---|
+| `TURBOKEEP_BIND` | `0.0.0.0` | Docker compose only: which interface publishes the port. `0.0.0.0` = any device on your network, `127.0.0.1` = this machine only. Without Docker the server listens on `HOST` (default `0.0.0.0`). |
 | `TURBOKEEP_PORT` | `47901` | Port on your machine. Without Docker this is the port the server listens on; with compose it is the left side of the published port. |
 | `PORT` | `47901` (`8080` in the image) | The same thing, if `TURBOKEEP_PORT` is not set. The Docker image sets it to 8080 inside the container. |
 | `TURBOKEEP_DATA` | `/data` | Where the database lives. |
@@ -42,7 +43,7 @@ keep.example.com {
     reverse_proxy 127.0.0.1:47901
 }
 ```
-nginx needs `proxy_set_header Host $host;`, `proxy_set_header X-Forwarded-Proto $scheme;`, `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` and `client_max_body_size 256m;` (imports). Do not expose the container's own port to the internet next to the proxy: with `TURBOKEEP_TRUST_PROXY=true` anyone who reaches it directly could forge those headers.
+nginx needs `proxy_set_header Host $host;`, `proxy_set_header X-Forwarded-Proto $scheme;`, `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` and `client_max_body_size 256m;` (imports). Put the proxy on the same machine and set `TURBOKEEP_BIND=127.0.0.1`: do not leave the port open to the network next to the proxy, because with `TURBOKEEP_TRUST_PROXY=true` anyone who reaches it directly could forge those headers.
 
 ## Security notes
 - Passwords are stored as scrypt hashes; sessions and API tokens only as SHA-256 of the secret. Ten failed sign-ins from one address lock it out for ten minutes.
