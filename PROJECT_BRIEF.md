@@ -3,14 +3,14 @@
 The long-lived "why and what". `CLAUDE.md` is the running log; this file changes rarely.
 
 ## Goal and user
-A self-hostable notes and tasks app for one person or a household, that is easy to put behind a **Cloudflare Tunnel**, and that never traps the data: it reads and writes **Standard Notes** (plaintext/decrypted export) and **Vikunja** (data export) so users can come from either, or leave to either. Built on the TurboNZL engine so it looks and releases like the other apps (themes, release flow, guides).
+A self-hostable notes and tasks app for one person or a household, that is easy to put behind a **Cloudflare Tunnel**, and that never traps the data: it reads and writes **Standard Notes** (plaintext/decrypted export), **Vikunja** (data export) and its own **TurboKeep** bundle (notes and tasks together) so users can come from either, or leave to either. Built on the TurboNZL engine so it looks and releases like the other apps (themes, release flow, guides).
 
 ## Feature inventory
 - Accounts (first-run setup code, optional sign-up, API tokens), per-user data.
-- Notes: plain/Markdown, tags, pin/archive/trash, search, autosave with conflict detection.
-- Tasks: projects (nested), labels, priority, dates, reminders (stored), repeats, relations, comments, smart views.
-- Import/export: Standard Notes zip/JSON/plain files; Vikunja zip. Preview (dry run) before import.
-- Themes, layouts, guides inside the app. Docker image + Node tarball per release.
+- Notes: plain/Markdown, tags, pin/archive/trash, search, autosave with conflict detection. New notes are titled with their date.
+- Tasks: any note can be one (schema v2); lists (nested), priority, dates, reminders (stored), repeats, relations, comments, smart views. Home shows both with a tag rail.
+- Import/export: TurboKeep bundle; Standard Notes zip/JSON/plain files; Vikunja zip. Preview (dry run) before import.
+- Themes, layouts, Keep view, guides inside the app. Native systemd install (`scripts/install-pi.sh`), in-app server update, Android app with a widget attached to every release.
 
 ## Rules that must not be broken
 1. **Importers are idempotent where the source has ids** (Standard Notes uuids) and always transactional: a failed import changes nothing.
@@ -33,7 +33,8 @@ See `docs/development/ARCHITECTURE.md` (Hono + node:sqlite server, React/Vite cl
 | Attachments | stored on disk, exported in `files/<id>` of the Vikunja zip, imported from it |
 | Standard Notes round trip proven on a live account | export imported in the real app, tags and dates verified |
 | Run against Vikunja 1.x | `relations=all` import checked on a current release |
-| Native clients (desktop/Android) | then take `updaters`, `cloudflare-access`, `device-pairing` from the engine |
+| Android app proven on a device | installed from a release, signed in, widget ticks a task, share target saves a note |
+| Desktop client | then take `updaters` etc. from the engine |
 
 ## Glossary
 - **Inbox:** each user's default project; tasks without a project go there.
