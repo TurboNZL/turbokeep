@@ -1,15 +1,28 @@
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { CheckSquare, FileText, Plus, Search, Settings } from 'lucide-react';
+import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { CheckSquare, FileText, MoreHorizontal, Plus, Search, Settings, type LucideIcon } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { effectiveUi } from 'turbothemes';
 import { cn } from '../lib/cn.ts';
 import { useStore } from '../lib/store.ts';
+import { VIEWS, homeLink, isView, type ViewId } from '../lib/views.ts';
+import { useWide } from '../lib/useWide.ts';
 
-const NAV = [
-  { to: '/notes', label: 'Notes', icon: FileText },
-  { to: '/tasks', label: 'Tasks', icon: CheckSquare },
-  { to: '/settings', label: 'Settings', icon: Settings },
-];
+interface NavItem { key: string; label: string; icon: LucideIcon; to: string; active: boolean; dock: boolean }
+
+/** The navigation: one button per way of looking at Home (Inbox, Today, Tasks…) and Settings. Home links carry the open note, so no tab hides it. */
+function useNavItems(): NavItem[] {
+  const { pathname } = useLocation();
+  const [sp] = useSearchParams();
+  const openNote = useStore((s) => s.openNote);
+  const wide = useWide();
+  const onHome = pathname.startsWith('/home');
+  const cur: ViewId = isView(sp.get('view')) ? (sp.get('view') as ViewId) : 'inbox';
+  return [
+    ...VIEWS.map((v) => ({ key: v.id, label: v.label, icon: v.icon, to: homeLink(wide ? openNote : null, { view: v.id }), active: onHome && cur === v.id, dock: v.dock })),
+    { key: 'settings', label: 'Settings', icon: Settings, to: '/settings', active: pathname.startsWith('/settings'), dock: true },
+  ];
+}
+const linkProps = (i: NavItem) => ({ 'aria-current': i.active ? ('page' as const) : undefined });
 
 /**
  * Keeps the CSS variables --ind-x/-y/-w/-h at the active link's box, for the `.bt-ind` element that some UI styles slide
@@ -68,8 +81,8 @@ function AddMenu() {
       {open && <>
         <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
         <div role="menu" className="bt-menu absolute right-0 z-30 mt-2 w-48 origin-top-right overflow-hidden py-1">
-          <button role="menuitem" className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm" onClick={() => go('/notes?new=1')}><FileText size={16} />New note</button>
-          <button role="menuitem" className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm" onClick={() => go('/tasks?new=1')}><CheckSquare size={16} />New task</button>
+          <button role="menuitem" className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm" onClick={() => go('/home?new=1')}><FileText size={16} />New note</button>
+          <button role="menuitem" className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm" onClick={() => go('/home?newtask=1')}><CheckSquare size={16} />New task</button>
         </div></>}
     </div>
   );
@@ -78,16 +91,23 @@ function AddMenu() {
 export function Layout() {
   const nav = useNavigate();
   const { pathname } = useLocation();
-  const sideRef = useIndicator<HTMLElement>(pathname);
-  const tabRef = useIndicator<HTMLElement>(pathname);
-  const [q, setQ] = useState('');
+  const items = useNavItems();
+  const [sp] = useSearchParams();
+  const activeKey = items.find((i) => i.active)?.key ?? '';
+  const sideRef = useIndicator<HTMLElement>(activeKey);
+  const tabRef = useIndicator<HTMLElement>(activeKey);
+  const [q, setQ] = useState(sp.get('q') ?? '');
+  const [more, setMore] = useState(false);
+  const openNote = useStore((s) => s.openNote);
+  const wide = useWide();
+  useEffect(() => setQ(pathname.startsWith('/home') ? sp.get('q') ?? '' : ''), [sp, pathname]);
   const ui = useStore((s) => s.settings.ui);
   const layout = useStore((s) => s.settings.layout);
   const topbar = layout === 'topbar', dock = layout === 'dock';
   const noSide = topbar || dock; // these layouts have no side bar at all
   const logo = '/icon.svg';
   const mainRef = useRef<HTMLElement>(null);
-  useLayoutEffect(() => { if (mainRef.current) mainRef.current.scrollTop = 0; }, [pathname]);
+  useLayoutEffect(() => { if (mainRef.current) mainRef.current.scrollTop = 0; }, [pathname.split('/')[1]]);
 
   return (
     <div className="flex h-full flex-col">
@@ -97,18 +117,18 @@ export function Layout() {
         {!noSide && <aside ref={sideRef} className="bt-side bt-shell relative hidden w-56 shrink-0 flex-col gap-1 p-3 md:flex">
           <span className="bt-ind" aria-hidden />
           <div className="bt-brand mb-3 flex items-center gap-2.5 px-3 pt-1 text-lg font-bold tracking-tight"><img src={logo} alt="" width={26} height={26} className="h-[26px] w-[26px] shrink-0" draggable={false} /><span className="bt-label-text">TurboKeep</span></div>
-          {NAV.map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to} title={label} className="bt-nav flex items-center gap-3 px-3 py-2 text-sm font-medium">
-              <Icon size={18} className="shrink-0" /><span className="bt-label-text">{label}</span>
-            </NavLink>
+          {items.map((i) => (
+            <Link key={i.key} to={i.to} title={i.label} {...linkProps(i)} className="bt-nav flex items-center gap-3 px-3 py-2 text-sm font-medium">
+              <i.icon size={18} className="shrink-0" /><span className="bt-label-text">{i.label}</span>
+            </Link>
           ))}
         </aside>}
         <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-          <form className="bt-top bt-shell sticky top-0 z-10 p-3 backdrop-blur" role="search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) nav(`/search?q=${encodeURIComponent(q.trim())}`); }}>
-            <div className="bt-topin relative mx-auto flex max-w-3xl items-center gap-3">
+          <form className="bt-top bt-shell sticky top-0 z-10 p-3 backdrop-blur" role="search" onSubmit={(e) => { e.preventDefault(); nav(homeLink(wide ? openNote : null, { view: isView(sp.get('view')) ? (sp.get('view') as ViewId) : 'inbox', tag: sp.get('tag') ?? undefined, project: sp.get('project') ?? undefined, q: q.trim() || undefined })); }}>
+            <div className="bt-topin relative mx-auto flex max-w-5xl items-center gap-3">
               <div className={cn('flex shrink-0 items-center gap-2 font-bold', !noSide && 'md:hidden')}><img src={logo} alt="TurboKeep" width={28} height={28} className="h-7 w-7 shrink-0" draggable={false} />{topbar && <span className="hidden md:inline">TurboKeep</span>}</div>
               {topbar && <nav className="bt-toplinks hidden min-w-0 items-center gap-6 overflow-x-auto md:flex" aria-label="Pages">
-                {NAV.map(({ to, label }) => <NavLink key={to} to={to} className="bt-toplink whitespace-nowrap">{label}</NavLink>)}
+                {items.map((i) => <Link key={i.key} to={i.to} {...linkProps(i)} className="bt-toplink whitespace-nowrap">{i.label}</Link>)}
               </nav>}
               <div className="bt-search relative flex-1">
                 <Search size={16} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-muted" />
@@ -117,14 +137,21 @@ export function Layout() {
               <AddMenu />
             </div>
           </form>
-          <div className="bt-content mx-auto max-w-6xl p-4 md:p-6"><div key={pathname.split('/')[1]} className="bt-page"><Outlet /></div></div>
+          <div className="bt-content p-4 md:p-6"><div key={pathname.split('/')[1]} className="bt-page"><Outlet /></div></div>
         </main>
       </div>
       <nav ref={tabRef} className={cn('bt-tabbar bt-shell relative flex', !dock && 'md:hidden')}>
         <span className="bt-ind" aria-hidden />
-        {NAV.map(({ to, label, icon: Icon }) => (
-          <NavLink key={to} to={to} className="bt-tab flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px]"><Icon size={20} />{label}</NavLink>
+        {items.filter((i) => i.dock).map((i) => (
+          <Link key={i.key} to={i.to} {...linkProps(i)} className="bt-tab flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px]"><i.icon size={20} />{i.label}</Link>
         ))}
+        <div className="relative flex flex-1">
+          <button type="button" className="bt-tab flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px]" aria-haspopup="menu" aria-expanded={more} onClick={() => setMore(!more)}><MoreHorizontal size={20} />More</button>
+          {more && <><div className="fixed inset-0 z-20" onClick={() => setMore(false)} />
+            <div role="menu" className="bt-menu absolute bottom-full right-0 z-30 mb-2 w-48 overflow-hidden py-1">
+              {items.filter((i) => !i.dock).map((i) => <Link key={i.key} role="menuitem" to={i.to} onClick={() => setMore(false)} {...linkProps(i)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm"><i.icon size={16} />{i.label}</Link>)}
+            </div></>}
+        </div>
       </nav>
     </div>
   );

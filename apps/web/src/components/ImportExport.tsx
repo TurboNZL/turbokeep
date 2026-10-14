@@ -4,9 +4,9 @@ import { api, download, type Report } from '../lib/api.ts';
 import { useStore } from '../lib/store.ts';
 import { Section } from './Section.tsx';
 
-const LABEL: Record<string, string> = { notes: 'notes', skipped: 'already here (skipped)', tags: 'new tags', projects: 'projects', tasks: 'tasks', labels: 'new labels', comments: 'comments', relations: 'task relations' };
+const LABEL: Record<string, string> = { notes: 'notes', skipped: 'already here (skipped)', tags: 'new tags', projects: 'projects', tasks: 'tasks', comments: 'comments', relations: 'task relations' };
 
-function ImportBox({ kind, accept, multiple, hint }: { kind: 'standardnotes' | 'vikunja'; accept: string; multiple: boolean; hint: string }) {
+function ImportBox({ kind, accept, multiple, hint }: { kind: 'turbokeep' | 'standardnotes' | 'vikunja'; accept: string; multiple: boolean; hint: string }) {
   const input = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [report, setReport] = useState<Report | null>(null);
@@ -51,6 +51,9 @@ export function ImportExport() {
       <Section title="Export">
         <p className="text-sm text-muted">Your data is yours: nothing here is locked in. Exports contain everything in your account, including the trash and archive.</p>
         <div className="space-y-3">
+          <div className="space-y-1.5"><h3 className="text-sm font-semibold">Everything: TurboKeep</h3>
+            <p className="text-xs text-muted">One zip with your notes and tasks together (tags, lists, reminders, repeats, relations, comments, pins, archive and trash). The way to move to another TurboKeep server or keep a backup you can read.</p>
+            <button className="btn" onClick={() => void run('/api/export/turbokeep', 'turbokeep.zip')}><Download size={15} />TurboKeep backup (.zip)</button></div>
           <div className="space-y-1.5"><h3 className="text-sm font-semibold">Notes: Standard Notes</h3>
             <p className="text-xs text-muted">The same zip Standard Notes writes for a decrypted backup: a JSON backup with tags, pins and dates that Standard Notes can import, plus every note as a <code>.txt</code> file in <code>Items/Note/</code>.</p>
             <div className="flex flex-wrap gap-2"><button className="btn" onClick={() => void run('/api/export/standardnotes', 'standard-notes.zip')}><Download size={15} />Standard Notes backup (.zip)</button>
@@ -62,11 +65,14 @@ export function ImportExport() {
           {msg && <p className="rounded-theme bg-raised p-2.5 text-sm" role="status">{msg}</p>}
         </div>
       </Section>
+      <Section title="Import: TurboKeep">
+        <ImportBox kind="turbokeep" multiple={false} accept=".zip,.json" hint="A zip made by TurboKeep's export (or its turbokeep.json). Notes that are already here (same id) are skipped, so importing twice is safe." />
+      </Section>
       <Section title="Import notes: Standard Notes">
         <ImportBox kind="standardnotes" multiple accept=".zip,.txt,.md,.markdown,.json" hint="Use the decrypted zip (Standard Notes: Account > Data Backups > Download backup > Decrypted), its JSON file, or plain .txt / .md files. Importing the same backup twice does not duplicate anything." />
       </Section>
       <Section title="Import tasks: Vikunja">
-        <ImportBox kind="vikunja" multiple={false} accept=".zip,.json" hint="Vikunja: Settings > Export your data, then pick the zip it gives you (or its data.json). Projects, subprojects, tasks, labels, reminders, repeats, relations and comments come across; attachments, assignees, kanban buckets and saved filters do not." />
+        <ImportBox kind="vikunja" multiple={false} accept=".zip,.json" hint="Vikunja: Settings > Export your data, then pick the zip it gives you (or its data.json). Lists, subprojects, tasks (each becomes a note), labels (they become tags), reminders, repeats, relations and comments come across; attachments, assignees, kanban buckets and saved filters do not." />
       </Section>
     </>
   );

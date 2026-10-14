@@ -27,3 +27,11 @@ export function ago(iso: string): string {
   if (s < 86400 * 30) return `${Math.floor(s / 86400)} d ago`;
   return new Date(iso).toLocaleDateString();
 }
+
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** The title a new note gets: "Wednesday, 14 Oct 2026 at 20:37" (this device's time, 24 hour clock). */
+export function dateTitle(d = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()} at ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
