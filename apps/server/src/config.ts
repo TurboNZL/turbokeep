@@ -20,7 +20,7 @@ export interface Config {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const bool = (v: string | undefined, d: boolean) => (v === undefined || v === '' ? d : /^(1|true|yes|on)$/i.test(v));
   return {
-    port: Number(env.PORT ?? 8080),
+    port: Number(env.TURBOKEEP_PORT ?? env.PORT ?? 47901), // 47901 is TurboKeep's in the engine's port list; the Docker image sets PORT=8080 inside its own network
     host: env.HOST ?? '0.0.0.0',
     dataDir: resolve(env.TURBOKEEP_DATA ?? './data'),
     webDir: resolve(env.TURBOKEEP_WEB ?? './apps/web/dist'),
