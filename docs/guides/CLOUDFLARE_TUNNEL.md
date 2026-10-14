@@ -23,7 +23,7 @@ Open `https://keep.example.com`, create the first account with the setup code. D
 - **Visitor address:** the sign-in lockout counts failed attempts per `CF-Connecting-IP`, the real visitor, not the tunnel. (Cloudflare *appends* to a visitor-supplied `X-Forwarded-For`, so that header is never trusted ahead of `CF-Connecting-IP`.)
 - **Same site:** changes made from the browser are accepted when the browser says the request is same-origin (`Sec-Fetch-Site`) or its `Origin` matches the host. If you set the tunnel's "HTTP Host Header" origin option to something else and use a very old browser, add your public address to `TURBOKEEP_ORIGINS`.
 - **Nothing else needed:** one origin, relative URLs, no WebSockets, no CORS settings.
-- **Keep the container's own port private.** The compose file publishes it on `127.0.0.1` only. With `TURBOKEEP_TRUST_PROXY=true` anyone who could reach the published port (47901) directly could forge `CF-Connecting-IP`.
+- **Once the tunnel works, close the direct door.** Set `TURBOKEEP_BIND=127.0.0.1` in `.env` and run `docker compose --profile tunnel up -d` again: the tunnel reaches TurboKeep over the compose network, so nothing else needs the port, and then it is no longer open to your LAN. By default it is open to the LAN (so you can set it up), and with `TURBOKEEP_TRUST_PROXY=true` anyone who could reach the published port (47901) directly could forge `CF-Connecting-IP`.
 
 ## Limits to know
 - Cloudflare refuses request bodies over your plan's limit (100 MB on Free and Pro, 200 MB on Business, 500 MB on Enterprise) with an HTTP 413. A very large import (a Vikunja export with many attachments) may not get through the tunnel: do it over your LAN (`http://<server>:47901` after publishing the port), or split it.
