@@ -15,13 +15,13 @@ git clone https://github.com/TurboNZL/turbokeep && cd turbokeep
 docker compose up -d
 docker compose logs turbokeep      # prints the setup code for the first account
 ```
-Open <http://localhost:8080>, create the first account with that setup code, done. Behind a Cloudflare tunnel, with updates, backups and every setting: see `docs/guides/` (also in the app under Settings > Guides).
+Open <http://localhost:47901>, create the first account with that setup code, done. Behind a Cloudflare tunnel, with updates, backups and every setting: see `docs/guides/` (also in the app under Settings > Guides).
 
 ## Develop
 ```
 pnpm install
-pnpm dev:server        # API on :8080 (needs Node 22.13+)
-pnpm dev:web           # client on :5173, proxies /api to :8080
+pnpm dev:server        # API on :47901 (needs Node 22.13+)
+pnpm dev:web           # client on :5173, proxies /api to :47901
 pnpm test && pnpm typecheck
 ```
 Layout: `apps/server` (Hono + the built-in `node:sqlite`, no native modules), `apps/web` (React, Vite, Tailwind), `docs/guides` (user guides, bundled into the app), `docs/development` (internals).
