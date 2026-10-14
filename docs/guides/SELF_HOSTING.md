@@ -9,6 +9,8 @@ docker compose up -d
 ```
 The image is `ghcr.io/turbonzl/turbokeep` (`:latest`, or a version such as `:2026.10.0`; amd64 and arm64, so a Raspberry Pi 4 or 5 works). The compose file publishes the port on `127.0.0.1` only; change `"127.0.0.1:8080:8080"` to `"8080:8080"` to reach it from your LAN. The data lives in the named volume `turbokeep-data`.
 
+If `docker compose pull` answers *denied* or *unauthorized*, the package on GitHub is still private (new packages start private): the owner opens GitHub > Packages > turbokeep > Package settings and sets the visibility to public, or you run `docker login ghcr.io` with a token that can read packages.
+
 ## Settings (environment variables)
 | Variable | Default | What |
 |---|---|---|
