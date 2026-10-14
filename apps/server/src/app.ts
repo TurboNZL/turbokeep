@@ -100,31 +100,36 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
   });
   app.delete('/api/tokens/:id', (c) => { run(db, "delete from sessions where user_id = ? and kind = 'api' and substr(token_hash,1,16) = ?", c.get('user').id, c.req.param('id')); return c.json({ ok: true }); });
 
-  // ---- notes ----
+  // ---- notes (a note can carry a task) ----
   const uid = (c: any) => (c.get('user') as AuthUser).id;
   const body = async (c: any) => (await c.req.json().catch(() => { throw new S.HttpError(400, 'Invalid JSON'); })) ?? {};
-  app.get('/api/notes', (c) => c.json(S.listNotes(db, uid(c), { view: (c.req.query('view') as any) || 'notes', tag: c.req.query('tag') || undefined, q: c.req.query('q') || undefined })));
+  const bool3 = (v: string | undefined) => (v === undefined || v === '' ? undefined : v === 'true' || v === '1');
+  app.get('/api/notes', (c) => {
+    const q = c.req.query();
+    return c.json(S.listNotes(db, uid(c), { view: (q.view as any) || 'notes', kind: (q.kind as any) || 'all', tag: q.tag || undefined, q: q.q || undefined, done: bool3(q.done), due: q.due as any, favorites: q.favorites === '1', projectId: int(q.project) }));
+  });
   app.post('/api/notes', async (c) => c.json(S.createNote(db, uid(c), await body(c)), 201));
   app.post('/api/notes/empty-trash', (c) => c.json({ deleted: S.emptyTrash(db, uid(c)) }));
-  app.get('/api/notes/:id', (c) => c.json(S.getNote(db, uid(c), c.req.param('id'))));
+  app.get('/api/notes/:id', (c) => c.json(S.getNoteDetail(db, uid(c), c.req.param('id'))));
   app.patch('/api/notes/:id', async (c) => { const b = await body(c); return c.json(S.updateNote(db, uid(c), c.req.param('id'), b, typeof b.base === 'string' ? b.base : undefined)); });
   app.delete('/api/notes/:id', (c) => { S.deleteNote(db, uid(c), c.req.param('id')); return c.json({ ok: true }); });
+  // the task of a note: make one, change it, take it off (the note stays)
+  app.put('/api/notes/:id/task', async (c) => c.json(S.createTask(db, uid(c), { ...(await body(c)), noteId: c.req.param('id') }), 201));
+  app.patch('/api/notes/:id/task', async (c) => { const n = S.getNote(db, uid(c), c.req.param('id')); if (!n.task) throw new S.HttpError(404, 'That note is not a task'); return c.json(S.updateTask(db, uid(c), n.task.id, await body(c))); });
+  app.delete('/api/notes/:id/task', (c) => { S.detachTask(db, uid(c), c.req.param('id')); return c.json({ ok: true }); });
   app.get('/api/tags', (c) => c.json(S.listTags(db, uid(c))));
   app.patch('/api/tags', async (c) => { const b = await body(c); S.renameTag(db, uid(c), String(b.from ?? ''), String(b.to ?? '')); return c.json({ ok: true }); });
   app.delete('/api/tags', (c) => { S.deleteTag(db, uid(c), c.req.query('title') ?? ''); return c.json({ ok: true }); });
 
-  // ---- projects, labels, tasks ----
+  // ---- projects and tasks ----
   app.get('/api/projects', (c) => c.json(S.listProjects(db, uid(c))));
   app.post('/api/projects', async (c) => c.json(S.createProject(db, uid(c), await body(c)), 201));
   app.patch('/api/projects/:id', async (c) => c.json(S.updateProject(db, uid(c), Number(c.req.param('id')), await body(c))));
   app.delete('/api/projects/:id', (c) => { S.deleteProject(db, uid(c), Number(c.req.param('id'))); return c.json({ ok: true }); });
-  app.get('/api/labels', (c) => c.json(S.listLabels(db, uid(c))));
-  app.patch('/api/labels/:id', async (c) => c.json(S.updateLabel(db, uid(c), Number(c.req.param('id')), await body(c))));
-  app.delete('/api/labels/:id', (c) => { S.deleteLabel(db, uid(c), Number(c.req.param('id'))); return c.json({ ok: true }); });
 
   app.get('/api/tasks', (c) => {
-    const q = c.req.query(), done = q.done === undefined ? undefined : q.done === 'true' || q.done === '1';
-    return c.json(S.listTasks(db, uid(c), { projectId: int(q.project), done, q: q.q, due: q.due as any, labelId: int(q.label), favorites: q.favorites === '1' }));
+    const q = c.req.query();
+    return c.json(S.listTasks(db, uid(c), { projectId: int(q.project), done: bool3(q.done), q: q.q, due: q.due as any, tag: q.tag || q.label || undefined, favorites: q.favorites === '1' }));
   });
   app.post('/api/tasks', async (c) => c.json(S.createTask(db, uid(c), await body(c)), 201));
   app.get('/api/tasks/:id', (c) => c.json(S.getTask(db, uid(c), Number(c.req.param('id')))));

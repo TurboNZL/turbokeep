@@ -1,5 +1,5 @@
 import { type DB, all, get, run, tx } from './db.ts';
-import { HttpError, createNote, createProject, createTask, ensureLabel, addComment, inbox, updateProject, INVERSE } from './store.ts';
+import { HttpError, createNote, createProject, createTask, addComment, inbox, updateProject, INVERSE } from './store.ts';
 import { buildStandardNotesZip, parseStandardNotes, type SnTag } from './formats/standardnotes.ts';
 import { buildVikunjaZip, parseVikunja, type BuildOptions, type VProject, type VTask } from './formats/vikunja.ts';
 import { ImportError, type ImportReport, type NoteOut } from './formats/types.ts';
@@ -54,18 +54,22 @@ export function importStandardNotes(db: DB, userId: number, files: { name: strin
 
 export function exportVikunja(db: DB, user: { id: number; username: string }, opts: BuildOptions = {}): { zip: Uint8Array; droppedRelations: number } {
   const u = get(db, 'select created_at from users where id = ?', user.id)!;
+  // a task's tags (the note's) are Vikunja's labels; they have no colour here
   const labelsByTask = new Map<number, VTask['labels']>();
-  for (const r of all(db, 'select tl.task_id, l.* from task_labels tl join labels l on l.id = tl.label_id where l.user_id = ?', user.id))
-    (labelsByTask.get(r.task_id) ?? labelsByTask.set(r.task_id, []).get(r.task_id)!).push({ id: r.id, title: r.title, description: r.description, hexColor: r.hex_color, created: r.created_at, updated: r.updated_at });
+  const labelIds = new Map<string, number>();
+  for (const r of all(db, 'select t.id as task_id, g.title, g.created_at from tasks t join note_tags nt on nt.note_id = t.note_id join tags g on g.id = nt.tag_id where t.user_id = ? order by g.title', user.id)) {
+    if (!labelIds.has(r.title)) labelIds.set(r.title, labelIds.size + 1);
+    (labelsByTask.get(r.task_id) ?? labelsByTask.set(r.task_id, []).get(r.task_id)!).push({ id: labelIds.get(r.title)!, title: r.title, description: '', hexColor: '', created: r.created_at, updated: r.created_at });
+  }
   const group = (sql: string) => { const m = new Map<number, any[]>(); for (const r of all(db, sql, user.id)) (m.get(r.task_id) ?? m.set(r.task_id, []).get(r.task_id)!).push(r); return m; };
   const reminders = group('select r.* from task_reminders r join tasks t on t.id = r.task_id where t.user_id = ? order by r.id');
   const comments = group('select c.* from task_comments c join tasks t on t.id = c.task_id where t.user_id = ? order by c.id');
-  const related = group('select r.task_id, r.kind, o.id, o.title, o.project_id from task_relations r join tasks t on t.id = r.task_id join tasks o on o.id = r.other_task_id where t.user_id = ? order by o.id');
+  const related = group('select r.task_id, r.kind, o.id, o.project_id, n.title from task_relations r join tasks t on t.id = r.task_id join tasks o on o.id = r.other_task_id join notes n on n.id = o.note_id where t.user_id = ? order by o.id');
   const projects = new Map<number, VProject>();
   for (const p of all(db, 'select * from projects where user_id = ? order by is_inbox desc, position, id', user.id))
     projects.set(p.id, { id: p.id, parentId: p.parent_id, title: p.title, description: p.description, hexColor: p.hex_color, isArchived: !!p.is_archived, isFavorite: !!p.is_favorite, position: p.position, created: p.created_at, updated: p.updated_at, tasks: [] });
   const index = new Map<number, number>();
-  for (const t of all(db, 'select * from tasks where user_id = ? order by id', user.id)) {
+  for (const t of all(db, 'select t.*, n.title, n.text as description from tasks t join notes n on n.id = t.note_id where t.user_id = ? and n.trashed = 0 order by t.id', user.id)) {
     const n = (index.get(t.project_id) ?? 0) + 1;
     index.set(t.project_id, n);
     const rel: VTask['related'] = {};
@@ -83,11 +87,11 @@ export function exportVikunja(db: DB, user: { id: number; username: string }, op
 
 export function importVikunja(db: DB, user: { id: number; username: string }, data: Uint8Array, dry: boolean): ImportReport {
   const { projects, warnings } = guard(() => parseVikunja(data));
-  const report: ImportReport = { projects: 0, tasks: 0, labels: 0, comments: 0, relations: 0, warnings: [...warnings] };
+  const report: ImportReport = { projects: 0, tasks: 0, tags: 0, comments: 0, relations: 0, warnings: [...warnings] };
   const inc = (k: string, n = 1) => { (report[k] as number) += n; };
   try {
     tx(db, () => {
-      const labelsBefore = Number(get(db, 'select count(*) c from labels where user_id = ?', user.id)!.c);
+      const tagsBefore = Number(get(db, 'select count(*) c from tags where user_id = ?', user.id)!.c);
       const projectMap = new Map<number, number>(); // Vikunja's id -> ours
       const taskMap = new Map<number, number>();
       for (const p of projects) {
@@ -103,12 +107,11 @@ export function importVikunja(db: DB, user: { id: number; username: string }, da
         const pid = projectMap.get(p.oldId)!;
         for (const t of p.tasks) {
           const made = createTask(db, user.id, {
-            title: t.title, description: t.description, projectId: pid, done: t.done, dueDate: t.dueDate, startDate: t.startDate, endDate: t.endDate, priority: t.priority, percentDone: t.percentDone,
+            title: t.title, description: t.description, tags: t.labels.map((l) => l.title), projectId: pid, done: t.done, dueDate: t.dueDate, startDate: t.startDate, endDate: t.endDate, priority: t.priority, percentDone: t.percentDone,
             hexColor: t.hexColor, isFavorite: t.isFavorite, position: t.position, repeatAfter: t.repeatAfter, repeatMode: t.repeatMode,
             reminders: t.reminders,
           }, { createdAt: t.created, updatedAt: t.updated });
           if (t.done && t.doneAt) run(db, 'update tasks set done_at = ? where id = ?', t.doneAt, made.id);
-          for (const l of t.labels) run(db, 'insert or ignore into task_labels (task_id, label_id) values (?,?)', made.id, ensureLabel(db, user.id, l.title, l.hexColor, l.description));
           for (const c of t.comments) { addComment(db, user.id, made.id, c.comment, c.author, { created: c.created, updated: c.updated }); inc('comments'); }
           if (t.oldId) taskMap.set(t.oldId, made.id);
           inc('tasks');
@@ -133,7 +136,7 @@ export function importVikunja(db: DB, user: { id: number; username: string }, da
       }
       if (dropped) (report.warnings as string[]).push(`${dropped} task relation${dropped === 1 ? '' : 's'} pointed at tasks that are not in the file and were skipped.`);
       for (const p of projects) if (p.isArchived) { const id = projectMap.get(p.oldId)!; if (!get(db, 'select 1 x from projects where id = ? and is_inbox = 1', id)) updateProject(db, user.id, id, { isArchived: true }); }
-      report.labels = Number(get(db, 'select count(*) c from labels where user_id = ?', user.id)!.c) - labelsBefore;
+      report.tags = Number(get(db, 'select count(*) c from tags where user_id = ?', user.id)!.c) - tagsBefore;
       if (dry) throw new DryRun();
     });
   } catch (e) { if (!(e instanceof DryRun)) throw e; }

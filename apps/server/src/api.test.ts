@@ -125,15 +125,15 @@ describe('tasks', () => {
   it('puts tasks in the Inbox, with labels, reminders and relations (both directions)', async () => {
     const projects = (await json('GET', '/api/projects')).body;
     expect(projects[0]).toMatchObject({ title: 'Inbox', isInbox: true });
-    const a = (await json('POST', '/api/tasks', { title: 'Plan trip', labels: ['travel'], priority: 4, dueDate: '2030-01-01T10:00:00Z', reminders: [{ reminder: '2029-12-31T10:00:00Z' }] })).body;
+    const a = (await json('POST', '/api/tasks', { title: 'Plan trip', tags: ['travel'], priority: 4, dueDate: '2030-01-01T10:00:00Z', reminders: [{ reminder: '2029-12-31T10:00:00Z' }] })).body;
     const b = (await json('POST', '/api/tasks', { title: 'Book flights' })).body;
     expect(a.projectId).toBe(projects[0].id);
-    expect(a.labels[0].title).toBe('travel');
+    expect(a.tags).toEqual(['travel']);
     const rel = (await json('POST', `/api/tasks/${a.id}/relations`, { otherId: b.id, kind: 'subtask' })).body;
     expect(rel.related.subtask[0].id).toBe(b.id);
     expect((await json('GET', `/api/tasks/${b.id}`)).body.related.parenttask[0].id).toBe(a.id);
     expect((await json('GET', '/api/tasks?done=false&q=flights')).body).toHaveLength(1);
-    expect((await json('GET', '/api/tasks?label=' + a.labels[0].id)).body).toHaveLength(1);
+    expect((await json('GET', '/api/tasks?tag=travel')).body).toHaveLength(1);
     await json('PATCH', `/api/tasks/${b.id}`, { done: true });
     expect((await json('GET', '/api/tasks?done=true')).body[0].doneAt).toBeTruthy();
   });
@@ -185,7 +185,7 @@ describe('import and export through HTTP', () => {
   it('Vikunja: export, import into a second account, nothing important lost', async () => {
     const proj = (await json('POST', '/api/projects', { title: 'Work', hexColor: 'ff8800' })).body;
     const sub = (await json('POST', '/api/projects', { title: 'Sub', parentId: proj.id })).body;
-    const a = (await json('POST', '/api/tasks', { title: 'Write report', projectId: proj.id, labels: ['urgent'], priority: 5, dueDate: '2031-03-04T05:06:07Z', description: '<p>hi</p>', repeatAfter: 604800, reminders: [{ reminder: '2031-03-03T05:06:07Z' }] })).body;
+    const a = (await json('POST', '/api/tasks', { title: 'Write report', projectId: proj.id, tags: ['urgent'], priority: 5, dueDate: '2031-03-04T05:06:07Z', description: '<p>hi</p>', repeatAfter: 604800, reminders: [{ reminder: '2031-03-03T05:06:07Z' }] })).body;
     const b = (await json('POST', '/api/tasks', { title: 'Collect data', projectId: sub.id, done: true })).body;
     await json('POST', `/api/tasks/${a.id}/relations`, { otherId: b.id, kind: 'blocked' });
     await json('DELETE', `/api/tasks/${a.id}/relations/${b.id}/blocked`);
@@ -203,7 +203,7 @@ describe('import and export through HTTP', () => {
     const c2 = reg.headers.get('set-cookie')!.split(';')[0]!;
     const res = await two.request('/api/import/vikunja', { method: 'POST', headers: { cookie: c2 }, body: upload('v.zip', zip) });
     const report = await res.json() as any;
-    expect(report).toMatchObject({ projects: 2, tasks: 2, labels: 1, comments: 1, relations: 1 });
+    expect(report).toMatchObject({ projects: 2, tasks: 2, tags: 1, comments: 1, relations: 1 });
     const get = async (p: string) => (await (await two.request(p, { headers: { cookie: c2 } })).json()) as any;
     const projects = await get('/api/projects');
     const work = projects.find((p: any) => p.title === 'Work'), subp = projects.find((p: any) => p.title === 'Sub');
@@ -211,7 +211,7 @@ describe('import and export through HTTP', () => {
     expect(subp.parentId).toBe(work.id);
     const tasks = await get('/api/tasks');
     const t = tasks.find((x: any) => x.title === 'Write report'), u = tasks.find((x: any) => x.title === 'Collect data');
-    expect(t).toMatchObject({ priority: 5, dueDate: '2031-03-04T05:06:07.000Z', description: '<p>hi</p>', repeatAfter: 604800, labels: [{ title: 'urgent' }], reminders: [{ reminder: '2031-03-03T05:06:07.000Z' }] });
+    expect(t).toMatchObject({ priority: 5, dueDate: '2031-03-04T05:06:07.000Z', description: '<p>hi</p>', repeatAfter: 604800, tags: ['urgent'], reminders: [{ reminder: '2031-03-03T05:06:07.000Z' }] });
     expect(u.done).toBe(true);
     expect(t.related.subtask[0].id).toBe(u.id);
     expect((await get(`/api/tasks/${t.id}`)).comments[0].comment).toBe('started');
@@ -235,5 +235,71 @@ describe('a genuine Vikunja export', () => {
     expect(parent.related.subtask.map((x: any) => x.title)).toEqual(['Child 1', 'Child 2']);
     expect(tasks.find((t: any) => t.title === 'Child 1').related.precedes[0].title).toBe('Child 2');
     expect((await json('GET', '/api/projects')).body.map((p: any) => p.title)).toEqual(['Inbox', 'Work']);
+  });
+});
+
+describe('a note can be a task', () => {
+  it('PUT makes a task from a note; the title, text and tags are the note\'s, and the list shows both kinds', async () => {
+    const note = (await json('POST', '/api/notes', { title: 'Plan trip', text: 'flights\nhotel', tags: ['travel'] })).body;
+    await json('POST', '/api/notes', { title: 'Just a note', text: 'no task here' });
+    expect(note.task).toBeNull();
+    const t = (await json('PUT', `/api/notes/${note.id}/task`, { dueDate: '2031-05-06T07:08:09Z', priority: 3, isFavorite: true })).body;
+    expect(t).toMatchObject({ noteId: note.id, title: 'Plan trip', description: 'flights\nhotel', tags: ['travel'], priority: 3, done: false });
+    expect((await json('PUT', `/api/notes/${note.id}/task`, {})).status).toBe(409); // already a task
+    const all = (await json('GET', '/api/notes')).body;
+    expect(all.map((n: any) => [n.title, !!n.task]).sort()).toEqual([['Just a note', false], ['Plan trip', true]]);
+    expect(all.find((n: any) => n.title === 'Plan trip').task).toMatchObject({ id: t.id, priority: 3, isFavorite: true, dueDate: '2031-05-06T07:08:09.000Z' });
+    expect((await json('GET', '/api/notes?kind=tasks')).body.map((n: any) => n.title)).toEqual(['Plan trip']);
+    expect((await json('GET', '/api/notes?kind=notes')).body.map((n: any) => n.title)).toEqual(['Just a note']);
+    expect((await json('GET', '/api/notes?favorites=1')).body).toHaveLength(1);
+    expect((await json('GET', `/api/notes/${note.id}`)).body.task).toMatchObject({ id: t.id, comments: [], reminders: [] }); // the detail has the whole task
+  });
+  it('done=false hides finished tasks but keeps plain notes; done=true shows only finished tasks', async () => {
+    const a = (await json('POST', '/api/tasks', { title: 'Open task' })).body;
+    const b = (await json('POST', '/api/tasks', { title: 'Done task' })).body;
+    await json('POST', '/api/notes', { title: 'Plain' });
+    await json('PATCH', `/api/notes/${b.noteId}/task`, { done: true });
+    expect((await json('GET', '/api/notes?done=false')).body.map((n: any) => n.title).sort()).toEqual(['Open task', 'Plain']);
+    expect((await json('GET', '/api/notes?done=true')).body.map((n: any) => n.title)).toEqual(['Done task']);
+    expect(a.noteId).toBeTruthy();
+  });
+  it('a task made through /api/tasks is a note too, and editing either side edits both', async () => {
+    const t = (await json('POST', '/api/tasks', { title: 'Buy milk', description: '2 litres', tags: ['home'] })).body;
+    expect((await json('GET', `/api/notes/${t.noteId}`)).body).toMatchObject({ title: 'Buy milk', text: '2 litres', tags: ['home'] });
+    await json('PATCH', `/api/notes/${t.noteId}`, { title: 'Buy oat milk', text: '3 litres', tags: ['home', 'food'] });
+    expect((await json('GET', `/api/tasks/${t.id}`)).body).toMatchObject({ title: 'Buy oat milk', description: '3 litres', tags: ['food', 'home'] });
+    await json('PATCH', `/api/tasks/${t.id}`, { title: 'Buy almond milk' });
+    expect((await json('GET', `/api/notes/${t.noteId}`)).body.title).toBe('Buy almond milk');
+    expect((await json('GET', '/api/notes?q=almond')).body).toHaveLength(1);
+    expect((await json('GET', '/api/tasks?q=almond')).body).toHaveLength(1);
+  });
+  it('taking the task off keeps the note; deleting the task or the note removes both; the trash hides tasks', async () => {
+    const a = (await json('POST', '/api/tasks', { title: 'Detach me' })).body;
+    expect((await json('DELETE', `/api/notes/${a.noteId}/task`)).status).toBe(200);
+    expect((await json('GET', `/api/notes/${a.noteId}`)).body.task).toBeNull();
+    expect((await json('GET', `/api/tasks/${a.id}`)).status).toBe(404);
+    expect((await json('DELETE', `/api/notes/${a.noteId}/task`)).status).toBe(404);
+
+    const b = (await json('POST', '/api/tasks', { title: 'Delete the task' })).body;
+    await json('DELETE', `/api/tasks/${b.id}`);
+    expect((await json('GET', `/api/notes/${b.noteId}`)).status).toBe(404); // a task is a note: both go
+
+    const c = (await json('POST', '/api/tasks', { title: 'Trash the note' })).body;
+    await json('PATCH', `/api/notes/${c.noteId}`, { trashed: true });
+    expect((await json('GET', '/api/tasks')).body.map((t: any) => t.title)).not.toContain('Trash the note');
+    expect((await json('GET', '/api/notes?view=trashed')).body.map((n: any) => n.title)).toContain('Trash the note');
+    await json('DELETE', `/api/notes/${c.noteId}`);
+    expect((await json('GET', `/api/tasks/${c.id}`)).status).toBe(404);
+  });
+  it('relations and comments follow the task, with the note\'s title', async () => {
+    const a = (await json('POST', '/api/tasks', { title: 'Parent' })).body;
+    const b = (await json('POST', '/api/tasks', { title: 'Child' })).body;
+    await json('POST', `/api/tasks/${a.id}/relations`, { otherId: b.id, kind: 'subtask' });
+    await json('POST', `/api/tasks/${a.id}/comments`, { comment: 'remember this' });
+    const d = (await json('GET', `/api/notes/${a.noteId}`)).body.task;
+    expect(d.related.subtask[0]).toMatchObject({ title: 'Child', noteId: b.noteId });
+    expect(d.comments[0].comment).toBe('remember this');
+    await json('PATCH', `/api/notes/${b.noteId}`, { title: 'Renamed child' });
+    expect((await json('GET', `/api/tasks/${a.id}`)).body.related.subtask[0].title).toBe('Renamed child');
   });
 });
