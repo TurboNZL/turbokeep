@@ -172,6 +172,7 @@ export function exportTurboKeep(db: DB, userId: number): Uint8Array {
     projects: all(db, 'select * from projects where user_id = ? order by is_inbox desc, id', userId).map((p) => ({
       id: p.id, title: p.title, description: p.description, hexColor: p.hex_color, parentId: p.parent_id, isArchived: !!p.is_archived, isFavorite: !!p.is_favorite, isInbox: !!p.is_inbox, position: p.position })),
     notes,
+    tagStyles: all(db, "select title, emoji, color from tags where user_id = ? and (emoji != '' or color != '') order by title", userId).map((t) => ({ title: t.title, emoji: t.emoji, color: t.color })),
     relations: all(db, 'select a.note_id as note_id, b.note_id as other_note_id, r.kind from task_relations r join tasks a on a.id = r.task_id join tasks b on b.id = r.other_task_id where a.user_id = ? order by r.task_id, r.other_task_id', userId)
       .map((r) => ({ noteId: r.note_id, otherNoteId: r.other_note_id, kind: r.kind })),
   };
@@ -230,6 +231,8 @@ export function importTurboKeep(db: DB, user: { id: number; username: string }, 
         if (!had) inc('relations');
       }
       if (dropped) (report.warnings as string[]).push(`${dropped} relation${dropped === 1 ? '' : 's'} could not be restored (a task they name is not in the file).`);
+      // tag looks: only fill in a tag that has none yet, so importing never overwrites what you chose here
+      for (const t of bundle.tagStyles) run(db, "update tags set emoji = case when emoji = '' then ? else emoji end, color = case when color = '' then ? else color end where user_id = ? and title = ?", t.emoji, t.color, user.id, t.title);
       report.tags = Number(get(db, 'select count(*) c from tags where user_id = ?', user.id)!.c) - tagsBefore;
       if (dry) throw new DryRun();
     });

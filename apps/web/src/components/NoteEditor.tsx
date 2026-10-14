@@ -5,6 +5,7 @@ import { useStore } from '../lib/store.ts';
 import { cn } from '../lib/cn.ts';
 import { renderMarkdown } from '../lib/markdown.ts';
 import { TaskPanel } from './TaskPanel.tsx';
+import { TagChip } from './TagChip.tsx';
 
 type Save = 'saved' | 'saving' | 'dirty' | 'offline' | 'conflict';
 
@@ -136,7 +137,7 @@ function Editor({ note, onBack, onGone, onOpenNote }: { note: NoteDetail; onBack
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        {tags.map((t) => <span key={t} className="chip inline-flex items-center gap-1">{t}<button type="button" aria-label={`Remove tag ${t}`} onClick={() => dropTag(t)}><X size={11} /></button></span>)}
+        {tags.map((t) => <TagChip key={t} title={t}><button type="button" aria-label={`Remove tag ${t}`} onClick={() => dropTag(t)}><X size={11} /></button></TagChip>)}
         <input className="input !w-40" list="all-tags" aria-label="Add a tag" placeholder="Add tag" value={tagDraft} onChange={(e) => setTagDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(tagDraft); } }} onBlur={() => tagDraft && addTag(tagDraft)} />
         <datalist id="all-tags">{allTags.map((t) => <option key={t.title} value={t.title} />)}</datalist>
         <label className="ml-auto flex items-center gap-2 text-xs text-muted"><input type="checkbox" checked={markdown} onChange={(e) => { const t = e.target.checked ? 'markdown' : 'plain-text'; setNoteType(t); change({ noteType: t }, true); }} />Markdown</label>

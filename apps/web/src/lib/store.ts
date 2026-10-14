@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { api, ApiError, type Note, type Project } from './api.ts';
+import { api, ApiError, type Note, type Project, type TagInfo } from './api.ts';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type DeviceSettings } from './settings.ts';
+import { takeMeta } from './prefetch.ts';
 import { applyAppearance } from './appearance.ts';
 
 interface State {
@@ -13,7 +14,7 @@ interface State {
   setUser(u: State['user']): void;
 
   projects: Project[];
-  tags: { title: string; count: number }[];
+  tags: TagInfo[];
   refreshMeta(): Promise<void>;
   /** The note list for the Notes page and the last view it showed (so the editor can update one entry without refetching). */
   notes: Note[];
@@ -39,7 +40,7 @@ export const useStore = create<State>((set, get) => ({
   projects: [], tags: [],
   async refreshMeta() {
     try {
-      const [projects, tags] = await Promise.all([api.projects(), api.tags()]);
+      const [projects, tags] = await (takeMeta() ?? Promise.all([api.projects(), api.tags()]));
       set({ projects, tags });
     } catch (e) { if (e instanceof ApiError && e.status === 401) get().setUser(null); }
   },

@@ -68,7 +68,7 @@ export function TaskPanel({ note, task, onTask, onOpenNote }: { note: NoteDetail
 
       {open && <>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <label className="block space-y-1 text-sm">Project<Select value={String(task.projectId)} onChange={(v) => void patch({ projectId: Number(v) })} options={projects.map((p) => ({ value: String(p.id), label: p.isInbox ? 'Inbox' : p.title }))} /></label>
+          <label className="block space-y-1 text-sm">Project<Select value={String(task.projectId)} onChange={(v) => void patch({ projectId: Number(v) })} options={projects.map((p) => ({ value: String(p.id), label: p.isInbox ? 'No list' : p.title }))} /></label>
           <label className="block space-y-1 text-sm">Priority<Select value={String(task.priority)} onChange={(v) => void patch({ priority: Number(v) })} options={PRIORITY} /></label>
           <label className="block space-y-1 text-sm">Progress: {Math.round(progress * 100)}%<input type="range" className="bt-range bt-hit w-full" style={{ '--p': `${progress * 100}%` } as React.CSSProperties} min={0} max={100} step={10} value={Math.round(progress * 100)} onChange={(e) => { setProgress(Number(e.target.value) / 100); slowPatch({ percentDone: Number(e.target.value) / 100 }); }} /></label>
           <label className="block space-y-1 text-sm">Due<input className="input" type="datetime-local" value={toLocalInput(task.dueDate)} onChange={(e) => void patch({ dueDate: fromLocalInput(e.target.value) })} /></label>

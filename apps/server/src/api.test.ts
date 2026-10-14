@@ -389,3 +389,47 @@ describe('TurboKeep backup (notes and tasks together)', () => {
     expect(bad.body).toMatchObject({ notes: 1 }); expect(bad.body.warnings[0]).toMatch(/skipped/);
   });
 });
+
+describe('tag looks, list excerpts, compression', () => {
+  it('a tag can get an emoji and a colour, and keeps them when its last note goes', async () => {
+    const n = (await json('POST', '/api/notes', { title: 'a', tags: ['work.reports'] })).body;
+    expect((await json('PATCH', '/api/tags', { title: 'work.reports', emoji: '📊', color: '#FF8800' })).status).toBe(200);
+    expect((await json('GET', '/api/tags')).body).toEqual([{ title: 'work.reports', emoji: '📊', color: 'ff8800', count: 1 }]);
+    expect((await json('PATCH', '/api/tags', { title: 'work.reports', color: 'orange' })).status).toBe(400);
+    expect((await json('PATCH', '/api/tags', { title: 'nope', emoji: 'x' })).status).toBe(404);
+    await json('PATCH', `/api/notes/${n.id}`, { tags: [] });
+    expect((await json('GET', '/api/tags')).body).toEqual([{ title: 'work.reports', emoji: '📊', color: 'ff8800', count: 0 }]); // styled: kept
+    await json('PATCH', '/api/tags', { title: 'work.reports', emoji: '', color: '' });
+    await json('PATCH', `/api/notes/${n.id}`, { tags: ['x'] }); await json('PATCH', `/api/notes/${n.id}`, { tags: [] });
+    expect((await json('GET', '/api/tags')).body).toEqual([]); // plain: removed with its last note
+  });
+  it('renaming onto an existing tag keeps a look', async () => {
+    await json('POST', '/api/notes', { title: 'a', tags: ['one'] }); await json('POST', '/api/notes', { title: 'b', tags: ['two'] });
+    await json('PATCH', '/api/tags', { title: 'one', emoji: '1️⃣' });
+    await json('PATCH', '/api/tags', { from: 'one', to: 'two' });
+    expect((await json('GET', '/api/tags')).body).toEqual([{ title: 'two', emoji: '1️⃣', color: '', count: 2 }]);
+  });
+  it('the TurboKeep backup carries tag looks, and an import only fills tags that have none', async () => {
+    await json('POST', '/api/notes', { title: 'a', tags: ['red'] });
+    await json('PATCH', '/api/tags', { title: 'red', emoji: '🔴', color: 'ff0000' });
+    const zip = new Uint8Array(await (await call('GET', '/api/export/turbokeep')).arrayBuffer());
+    expect(JSON.parse(new TextDecoder().decode(unzipSync(zip)['turbokeep.json'])).tagStyles).toEqual([{ title: 'red', emoji: '🔴', color: 'ff0000' }]);
+    const app2 = createApp(openDb(':memory:'), cfg, { code: null });
+    const reg = await app2.request('/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'two', password: 'longenoughpassword' }) });
+    const ck = reg.headers.get('set-cookie')!.split(';')[0]!;
+    await app2.request('/api/import/turbokeep', { method: 'POST', headers: { cookie: ck }, body: upload('b.zip', zip) });
+    expect(await (await app2.request('/api/tags', { headers: { cookie: ck } })).json()).toEqual([{ title: 'red', emoji: '🔴', color: 'ff0000', count: 1 }]);
+  });
+  it('excerpt=1 shortens long texts in the list, the note itself stays whole', async () => {
+    const n = (await json('POST', '/api/notes', { title: 'long', text: 'x'.repeat(1000) })).body;
+    expect((await json('GET', '/api/notes?excerpt=1')).body[0].text).toHaveLength(400);
+    expect((await json('GET', '/api/notes')).body[0].text).toHaveLength(1000);
+    expect((await json('GET', `/api/notes/${n.id}`)).body.text).toHaveLength(1000);
+  });
+  it('answers are compressed when the browser accepts it', async () => {
+    await json('POST', '/api/notes', { title: 'long', text: 'word '.repeat(2000) });
+    const r = await call('GET', '/api/notes', undefined, { 'accept-encoding': 'gzip' });
+    expect(r.headers.get('content-encoding')).toBe('gzip');
+    expect(((await r.arrayBuffer()).byteLength)).toBeLessThan(2000);
+  });
+});

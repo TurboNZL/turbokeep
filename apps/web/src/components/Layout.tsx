@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckSquare, FileText, MoreHorizontal, Plus, Search, Settings, type LucideIcon } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { effectiveUi } from 'turbothemes';
 import { cn } from '../lib/cn.ts';
 import { useStore } from '../lib/store.ts';
@@ -64,6 +65,34 @@ function CandyDefs() {
   );
 }
 
+/**
+ * The dock's "More" button and its menu. The menu is drawn on the page itself (a portal, fixed position) instead of inside the dock: some UI styles
+ * give the dock its own clipping or stacking rules, which swallowed a menu that was a child of it.
+ */
+function MoreMenu({ items }: { items: NavItem[] }) {
+  const [open, setOpen] = useState(false);
+  const btn = useRef<HTMLButtonElement>(null);
+  const [bottom, setBottom] = useState(64);
+  useEffect(() => {
+    if (!open) return;
+    const r = btn.current?.closest('.bt-tabbar')?.getBoundingClientRect();
+    if (r) setBottom(window.innerHeight - r.top + 8);
+    const h = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [open]);
+  return (
+    <div className="relative flex flex-1">
+      <button ref={btn} type="button" className="bt-tab flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px]" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><MoreHorizontal size={20} />More</button>
+      {open && createPortal(<>
+        <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+        <div role="menu" style={{ bottom }} className="bt-menu fixed right-3 z-[61] w-52 overflow-hidden py-1">
+          {items.map((i) => <Link key={i.key} role="menuitem" to={i.to} onClick={() => setOpen(false)} {...linkProps(i)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm"><i.icon size={16} />{i.label}</Link>)}
+        </div></>, document.body)}
+    </div>
+  );
+}
+
 /** One place to add anything, reachable on every page and on a phone. */
 function AddMenu() {
   const [open, setOpen] = useState(false);
@@ -97,7 +126,6 @@ export function Layout() {
   const sideRef = useIndicator<HTMLElement>(activeKey);
   const tabRef = useIndicator<HTMLElement>(activeKey);
   const [q, setQ] = useState(sp.get('q') ?? '');
-  const [more, setMore] = useState(false);
   const openNote = useStore((s) => s.openNote);
   const wide = useWide();
   useEffect(() => setQ(pathname.startsWith('/home') ? sp.get('q') ?? '' : ''), [sp, pathname]);
@@ -125,7 +153,7 @@ export function Layout() {
         </aside>}
         <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
           <form className="bt-top bt-shell sticky top-0 z-10 p-3 backdrop-blur" role="search" onSubmit={(e) => { e.preventDefault(); nav(homeLink(wide ? openNote : null, { view: isView(sp.get('view')) ? (sp.get('view') as ViewId) : 'inbox', tag: sp.get('tag') ?? undefined, project: sp.get('project') ?? undefined, q: q.trim() || undefined })); }}>
-            <div className="bt-topin relative mx-auto flex max-w-5xl items-center gap-3">
+            <div className="bt-topin relative flex items-center gap-3">
               <div className={cn('flex shrink-0 items-center gap-2 font-bold', !noSide && 'md:hidden')}><img src={logo} alt="TurboKeep" width={28} height={28} className="h-7 w-7 shrink-0" draggable={false} />{topbar && <span className="hidden md:inline">TurboKeep</span>}</div>
               {topbar && <nav className="bt-toplinks hidden min-w-0 items-center gap-6 overflow-x-auto md:flex" aria-label="Pages">
                 {items.map((i) => <Link key={i.key} to={i.to} {...linkProps(i)} className="bt-toplink whitespace-nowrap">{i.label}</Link>)}
@@ -145,13 +173,7 @@ export function Layout() {
         {items.filter((i) => i.dock).map((i) => (
           <Link key={i.key} to={i.to} {...linkProps(i)} className="bt-tab flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px]"><i.icon size={20} />{i.label}</Link>
         ))}
-        <div className="relative flex flex-1">
-          <button type="button" className="bt-tab flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px]" aria-haspopup="menu" aria-expanded={more} onClick={() => setMore(!more)}><MoreHorizontal size={20} />More</button>
-          {more && <><div className="fixed inset-0 z-20" onClick={() => setMore(false)} />
-            <div role="menu" className="bt-menu absolute bottom-full right-0 z-30 mb-2 w-48 overflow-hidden py-1">
-              {items.filter((i) => !i.dock).map((i) => <Link key={i.key} role="menuitem" to={i.to} onClick={() => setMore(false)} {...linkProps(i)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm"><i.icon size={16} />{i.label}</Link>)}
-            </div></>}
-        </div>
+        <MoreMenu items={items.filter((i) => !i.dock)} />
       </nav>
     </div>
   );

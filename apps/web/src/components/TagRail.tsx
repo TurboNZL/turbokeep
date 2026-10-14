@@ -1,13 +1,13 @@
 import { Folder, Pencil, Plus, Tag } from 'lucide-react';
 import { cn } from '../lib/cn.ts';
-import type { Project } from '../lib/api.ts';
+import type { Project, TagInfo } from '../lib/api.ts';
 
 /**
  * Tags (and the task lists, "projects") as a column to the left of the notes: one click switches what Home shows. On a phone it lies down into a
  * strip of chips above the list. A tag also matches the tags nested under it ("work" shows "work.reports").
  */
-export function TagRail({ tags, tag, onTag, projects, project, onProject, onNewProject, onEditProject }: {
-  tags: { title: string; count: number }[]; tag: string; onTag: (t: string) => void;
+export function TagRail({ tags, tag, onTag, onEditTag, projects, project, onProject, onNewProject, onEditProject }: {
+  tags: TagInfo[]; tag: string; onTag: (t: string) => void; onEditTag: (t: TagInfo) => void;
   projects: Project[]; project: string; onProject: (id: string) => void; onNewProject: () => void; onEditProject: (p: Project) => void;
 }) {
   const lists = projects.filter((p) => !p.isInbox && !p.isArchived);
@@ -19,10 +19,14 @@ export function TagRail({ tags, tag, onTag, projects, project, onProject, onNewP
       {tags.map((t) => {
         const depth = t.title.split('.').length - 1, on = tag === t.title;
         return (
-          <button key={t.title} onClick={() => onTag(on ? '' : t.title)} aria-current={on || undefined} title={t.title} style={{ paddingLeft: undefined }}
-            className={cn(chip, on && 'bg-raised font-medium text-accent')}>
-            <span className="min-w-0 flex-1 truncate" style={{ paddingLeft: `${depth * 0.75}rem` }}>{t.title.split('.').pop()}</span><span className="text-xs text-muted">{t.count}</span>
-          </button>);
+          <div key={t.title} className="group relative flex shrink-0 items-center lg:w-full">
+            <button onClick={() => onTag(on ? '' : t.title)} aria-current={on || undefined} title={t.title} className={cn(chip, 'lg:pr-8', on && 'bg-raised pr-7 font-medium text-accent')}
+              style={t.color ? { borderLeft: `3px solid #${t.color}` } : undefined}>
+              {t.emoji && <span aria-hidden>{t.emoji}</span>}
+              <span className="min-w-0 flex-1 truncate" style={{ paddingLeft: `${depth * 0.75}rem` }}>{t.title.split('.').pop()}</span><span className="text-xs text-muted">{t.count}</span>
+            </button>
+            <button className={cn('absolute right-1 rounded p-1 text-muted hover:text-fg', on ? 'block' : 'hidden lg:group-hover:block lg:group-focus-within:block')} onClick={() => onEditTag(t)} aria-label={`Edit tag ${t.title}`} title="Emoji, colour, name"><Pencil size={12} /></button>
+          </div>);
       })}
       {!tags.length && <p className="hidden px-2.5 text-xs text-muted lg:block">Tags you add to notes show up here.</p>}
 

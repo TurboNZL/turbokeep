@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { api } from './lib/api.ts';
 import { useStore } from './lib/store.ts';
@@ -6,7 +6,8 @@ import { android } from './lib/native.ts';
 import { Layout } from './components/Layout.tsx';
 import { LoginPage } from './pages/Login.tsx';
 import { HomePage } from './pages/Home.tsx';
-import { SettingsPage } from './pages/Settings.tsx';
+// Settings (the theme catalogue, the guides, import and export) is only fetched when someone opens it: Home loads without it
+const SettingsPage = lazy(() => import('./pages/Settings.tsx').then((m) => ({ default: m.SettingsPage })));
 
 export function App() {
   const auth = useStore((s) => s.auth);
@@ -30,7 +31,7 @@ export function App() {
         <Route path="/notes/:id?" element={<Navigate to="/home" replace />} />
         <Route path="/tasks" element={<Navigate to="/home?view=tasks" replace />} />
         <Route path="/search" element={<Navigate to="/home" replace />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings" element={<Suspense fallback={<p className="p-6 text-sm text-muted">Loading…</p>}><SettingsPage /></Suspense>} />
         <Route path="*" element={<Navigate to="/home" replace />} />
       </Route>
     </Routes>
