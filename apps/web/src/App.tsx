@@ -2,11 +2,10 @@ import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { api } from './lib/api.ts';
 import { useStore } from './lib/store.ts';
+import { android } from './lib/native.ts';
 import { Layout } from './components/Layout.tsx';
 import { LoginPage } from './pages/Login.tsx';
-import { NotesPage } from './pages/Notes.tsx';
-import { TasksPage } from './pages/Tasks.tsx';
-import { SearchPage } from './pages/Search.tsx';
+import { HomePage } from './pages/Home.tsx';
 import { SettingsPage } from './pages/Settings.tsx';
 
 export function App() {
@@ -15,17 +14,24 @@ export function App() {
   const refreshMeta = useStore((s) => s.refreshMeta);
   useEffect(() => { api.me().then((r) => setUser(r.user), () => setUser(null)); }, [setUser]);
   useEffect(() => { if (auth === 'in') void refreshMeta(); }, [auth, refreshMeta]);
+  // inside the Android app: the widget needs its own API token, made once after signing in
+  useEffect(() => {
+    const b = android();
+    if (auth !== 'in' || !b || b.hasToken()) return;
+    api.createToken('Android app').then((r) => b.saveToken(r.token), () => {});
+  }, [auth]);
   if (auth === 'loading') return <div className="grid h-full place-items-center text-sm text-muted">Loading…</div>;
   if (auth === 'out') return <LoginPage />;
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route index element={<Navigate to="/notes" replace />} />
-        <Route path="/notes/:id?" element={<NotesPage />} />
-        <Route path="/tasks" element={<TasksPage />} />
-        <Route path="/search" element={<SearchPage />} />
+        <Route index element={<Navigate to="/home" replace />} />
+        <Route path="/home/:id?" element={<HomePage />} />
+        <Route path="/notes/:id?" element={<Navigate to="/home" replace />} />
+        <Route path="/tasks" element={<Navigate to="/home?view=tasks" replace />} />
+        <Route path="/search" element={<Navigate to="/home" replace />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="*" element={<Navigate to="/notes" replace />} />
+        <Route path="*" element={<Navigate to="/home" replace />} />
       </Route>
     </Routes>
   );

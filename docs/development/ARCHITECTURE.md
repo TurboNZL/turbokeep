@@ -5,15 +5,18 @@ apps/server   Hono on Node 22, SQLite through the built-in node:sqlite (no nativ
   src/config.ts   environment -> Config
   src/db.ts       schema, versioned migrations (pragma user_version), tx() helper
   src/auth.ts     scrypt passwords, session/API-token storage (SHA-256), same-site check, login limiter, client IP
-  src/store.ts    notes, tags, projects, labels, tasks, relations, comments (all queries; every one is scoped by user_id)
+  src/store.ts    notes, tags, projects, tasks (a task row belongs to one note: tasks.note_id), relations, comments (all queries; every one is scoped by user_id)
   src/formats/    Standard Notes + Vikunja readers and writers (pure)
   src/io.ts       import/export against the database (dry run = the transaction is rolled back)
-  src/app.ts      routes, security headers (CSP), static client with SPA fallback
-apps/web      React 18, Vite, Tailwind with the turbothemes preset, zustand, react-router
+  src/app.ts      routes, security headers (CSP), static client with SPA fallback, owner-only /api/admin/update
+  src/update.ts   the in-app "Update server" (runs scripts/update.sh --live, then exits so systemd restarts)
+  src/formats/turbokeep.ts  the TurboKeep bundle (one turbokeep.json in a zip)
+apps/web      React 18, Vite, Tailwind with the turbothemes preset, zustand, react-router. One page, Home (tag rail | list | editor, or the Keep wall), plus Settings
+apps/android Kotlin: WebView of the server's page, home-screen widget (RemoteViews), quick add / share, updater
 ```
 
 ## Decisions and why
-- **node:sqlite, not better-sqlite3:** no native build, so the Docker image and the CI are trivial and arm64 needs no compiler. Cost: Node >= 22.13 and an "experimental" warning (silenced with `--disable-warning`). Vitest runs it fine.
+- **node:sqlite, not better-sqlite3:** no native build, so the installer and the CI are trivial and arm64 needs no compiler. Cost: Node >= 22.13 and an "experimental" warning (silenced with `--disable-warning`). Vitest runs it fine.
 - **Server is the source of truth, no offline mode:** a note editor autosaves (700 ms) and flushes when the tab is hidden; failures show "Offline: will retry" and retry every 5 s; a stale save returns 409 with the server's note (`base` = the `updatedAt` the editor last saw) and the editor offers keep mine / use theirs. A service worker and a local queue are the next step, not done.
 - **Auth:** the first account needs a setup code printed in the log (a public tunnel must not be claimable by the first visitor). Cookie sessions are `HttpOnly; SameSite=Lax; Secure` when HTTPS was seen, and cookie writes need `Sec-Fetch-Site: same-origin` or a matching `Origin`. Bearer tokens skip that. Tokens and sessions are stored hashed.
 - **Dates:** ISO strings in UTC in the database. `done_at` is set when ticked. Repeating tasks follow Vikunja's modes (`nextDates` in `store.ts`).
@@ -23,3 +26,6 @@ apps/web      React 18, Vite, Tailwind with the turbothemes preset, zustand, rea
 
 ## Tests
 `pnpm test` runs both packages: server (formats, API through `app.request`, database, a real Vikunja export fixture) and web (markdown safety, dates). The browser flow was driven with Playwright + Chromium during development (not part of CI).
+
+## Data model (schema v2)
+A **task is a note with a task attached**. `notes` holds title, text, tags, pin/archive/trash; `tasks.note_id` (unique, cascade) holds done, dates, priority, project, repeat; reminders, comments and relations hang off the task. Labels were folded into tags by migration 1 (every v1 task got a note). `GET /api/notes?kind=tasks|notes|all` lists them together; `/api/tasks` is the task-side view of the same rows.

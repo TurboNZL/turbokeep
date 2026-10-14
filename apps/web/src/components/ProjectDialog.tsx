@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, type Project } from '../lib/api.ts';
 import { useStore } from '../lib/store.ts';
 import { Dialog } from './Dialog.tsx';
+import { Select } from './Select.tsx';
 
 /** Create or edit a project: name, description, colour, where it sits, archived. */
 export function ProjectDialog({ project, onClose, onDone }: { project: Project | null; onClose: () => void; onDone: (goTo?: string) => void }) {
@@ -34,7 +35,7 @@ export function ProjectDialog({ project, onClose, onDone }: { project: Project |
         <label className="block space-y-1 text-sm">Name<input className="input" autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} /></label>
         <label className="block space-y-1 text-sm">Description<textarea className="input min-h-[5rem] w-full" value={description} onChange={(e) => setDescription(e.target.value)} /></label>
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block space-y-1 text-sm">Inside<select className="input" value={parentId ?? ''} onChange={(e) => setParentId(e.target.value ? Number(e.target.value) : null)}><option value="">Top level</option>{projects.filter((p) => !p.isInbox && !blocked.has(p.id)).map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
+          <div className="block space-y-1 text-sm"><span>Inside</span><Select aria-label="Inside" value={parentId == null ? '' : String(parentId)} onChange={(v) => setParentId(v ? Number(v) : null)} options={[{ value: '', label: 'Top level' }, ...projects.filter((p) => !p.isInbox && !blocked.has(p.id)).map((p) => ({ value: String(p.id), label: p.title }))]} /></div>
           <label className="block space-y-1 text-sm">Colour<span className="flex items-center gap-2"><input type="color" aria-label="Colour" value={`#${hexColor || '808080'}`} onChange={(e) => setHexColor(e.target.value.slice(1))} className="h-9 w-12 cursor-pointer rounded border border-line bg-transparent" />{hexColor && <button type="button" className="btn btn-ghost text-xs" onClick={() => setHexColor('')}>No colour</button>}</span></label>
         </div>
         {project && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={isArchived} onChange={(e) => setIsArchived(e.target.checked)} />Archived</label>}

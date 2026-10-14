@@ -1,4 +1,4 @@
-# Every merge to main builds the Docker image (linux/amd64 and linux/arm64) and a Node tarball and publishes them as a new release. Nothing to tag by hand.
+# Every merge to main publishes a new release (and the Android app is attached to it). The server itself updates from main (scripts/update.sh), so there is nothing else to package. Nothing to tag by hand.
 # The version is the year, the month and a counter: v2026.10.0, v2026.10.1, ... (the counter restarts each month).
 # Documentation-only changes do not release. "Run workflow" in the Actions tab releases the current main on demand.
 name: Release
@@ -9,7 +9,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
-  packages: write
 concurrency:
   group: release
   cancel-in-progress: false
@@ -33,47 +32,20 @@ jobs:
         run: gh release create "${{ steps.next.outputs.tag }}" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "${{ steps.next.outputs.tag }}" --generate-notes
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
 
-  docker:
+  android:
     needs: release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
-      - name: Image name (ghcr wants lowercase) and version
-        id: meta
-        run: |
-          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-          TAG='${{ needs.release.outputs.tag }}'; echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          build-args: VERSION=${{ steps.meta.outputs.version }}
-          tags: |
-            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
-            ${{ steps.meta.outputs.image }}:latest
-
-  # for running without Docker: node server.mjs with the web client beside it (docs/guides/SELF_HOSTING.md)
-  node-bundle:
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
-      - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm build
-      - name: Bundle the server and the web client
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.9' }
+      - name: Build the APK
         run: |
           TAG='${{ needs.release.outputs.tag }}'
-          mkdir -p bundle/web
-          cp apps/server/dist/server.mjs bundle/
-          cp -r apps/web/dist/. bundle/web/
-          tar -czf "turbokeep-${TAG#v}-node.tar.gz" -C bundle .
-          gh release upload "$TAG" "turbokeep-${TAG#v}-node.tar.gz" --clobber
+          VERSION="${TAG#v}"
+          gradle -p apps/android :app:assembleRelease -PappVersion="$VERSION"
+          cp apps/android/app/build/outputs/apk/release/app-release.apk "turbokeep-$VERSION-android.apk"
+          gh release upload "$TAG" "turbokeep-$VERSION-android.apk" --clobber
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }

@@ -218,11 +218,22 @@ export function AppearancePreview() {
   );
 }
 
+/** Google Keep view: Home shows the notes as a wall of cards instead of a list with the editor beside it. Right below the layouts. */
+export function KeepViewSection() {
+  const { settings, updateSettings } = useStore();
+  return (
+    <Section title="Google Keep view">
+      <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={settings.keepView} onChange={(e) => updateSettings({ keepView: e.target.checked })} />
+        <span>Show notes as a wall of cards, like Google Keep. A card opens the note in a window; tags and the views keep working.</span></label>
+    </Section>
+  );
+}
+
 /** Colour theme and UI style as two separate sections, with one preview beside them. */
 export function AppearanceLayout() {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
-      <div className="min-w-0 space-y-5"><LayoutSection /><ColourThemeSection /><UiStyleSection /><ThemeUpdates /></div>
+      <div className="min-w-0 space-y-5"><LayoutSection /><KeepViewSection /><ColourThemeSection /><UiStyleSection /><ThemeUpdates /></div>
       <AppearancePreview />
     </div>
   );

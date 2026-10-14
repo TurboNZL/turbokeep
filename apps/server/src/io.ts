@@ -1,6 +1,8 @@
 import { type DB, all, get, run, tx } from './db.ts';
-import { HttpError, createNote, createProject, createTask, ensureLabel, addComment, inbox, updateProject, INVERSE } from './store.ts';
+import { VERSION } from './version.ts';
+import { HttpError, createNote, createProject, createTask, addComment, inbox, updateProject, INVERSE } from './store.ts';
 import { buildStandardNotesZip, parseStandardNotes, type SnTag } from './formats/standardnotes.ts';
+import { buildTurboKeepZip, parseTurboKeep, type TkBundle, type TkNote } from './formats/turbokeep.ts';
 import { buildVikunjaZip, parseVikunja, type BuildOptions, type VProject, type VTask } from './formats/vikunja.ts';
 import { ImportError, type ImportReport, type NoteOut } from './formats/types.ts';
 
@@ -54,18 +56,22 @@ export function importStandardNotes(db: DB, userId: number, files: { name: strin
 
 export function exportVikunja(db: DB, user: { id: number; username: string }, opts: BuildOptions = {}): { zip: Uint8Array; droppedRelations: number } {
   const u = get(db, 'select created_at from users where id = ?', user.id)!;
+  // a task's tags (the note's) are Vikunja's labels; they have no colour here
   const labelsByTask = new Map<number, VTask['labels']>();
-  for (const r of all(db, 'select tl.task_id, l.* from task_labels tl join labels l on l.id = tl.label_id where l.user_id = ?', user.id))
-    (labelsByTask.get(r.task_id) ?? labelsByTask.set(r.task_id, []).get(r.task_id)!).push({ id: r.id, title: r.title, description: r.description, hexColor: r.hex_color, created: r.created_at, updated: r.updated_at });
+  const labelIds = new Map<string, number>();
+  for (const r of all(db, 'select t.id as task_id, g.title, g.created_at from tasks t join note_tags nt on nt.note_id = t.note_id join tags g on g.id = nt.tag_id where t.user_id = ? order by g.title', user.id)) {
+    if (!labelIds.has(r.title)) labelIds.set(r.title, labelIds.size + 1);
+    (labelsByTask.get(r.task_id) ?? labelsByTask.set(r.task_id, []).get(r.task_id)!).push({ id: labelIds.get(r.title)!, title: r.title, description: '', hexColor: '', created: r.created_at, updated: r.created_at });
+  }
   const group = (sql: string) => { const m = new Map<number, any[]>(); for (const r of all(db, sql, user.id)) (m.get(r.task_id) ?? m.set(r.task_id, []).get(r.task_id)!).push(r); return m; };
   const reminders = group('select r.* from task_reminders r join tasks t on t.id = r.task_id where t.user_id = ? order by r.id');
   const comments = group('select c.* from task_comments c join tasks t on t.id = c.task_id where t.user_id = ? order by c.id');
-  const related = group('select r.task_id, r.kind, o.id, o.title, o.project_id from task_relations r join tasks t on t.id = r.task_id join tasks o on o.id = r.other_task_id where t.user_id = ? order by o.id');
+  const related = group('select r.task_id, r.kind, o.id, o.project_id, n.title from task_relations r join tasks t on t.id = r.task_id join tasks o on o.id = r.other_task_id join notes n on n.id = o.note_id where t.user_id = ? order by o.id');
   const projects = new Map<number, VProject>();
   for (const p of all(db, 'select * from projects where user_id = ? order by is_inbox desc, position, id', user.id))
     projects.set(p.id, { id: p.id, parentId: p.parent_id, title: p.title, description: p.description, hexColor: p.hex_color, isArchived: !!p.is_archived, isFavorite: !!p.is_favorite, position: p.position, created: p.created_at, updated: p.updated_at, tasks: [] });
   const index = new Map<number, number>();
-  for (const t of all(db, 'select * from tasks where user_id = ? order by id', user.id)) {
+  for (const t of all(db, 'select t.*, n.title, n.text as description from tasks t join notes n on n.id = t.note_id where t.user_id = ? and n.trashed = 0 order by t.id', user.id)) {
     const n = (index.get(t.project_id) ?? 0) + 1;
     index.set(t.project_id, n);
     const rel: VTask['related'] = {};
@@ -83,11 +89,11 @@ export function exportVikunja(db: DB, user: { id: number; username: string }, op
 
 export function importVikunja(db: DB, user: { id: number; username: string }, data: Uint8Array, dry: boolean): ImportReport {
   const { projects, warnings } = guard(() => parseVikunja(data));
-  const report: ImportReport = { projects: 0, tasks: 0, labels: 0, comments: 0, relations: 0, warnings: [...warnings] };
+  const report: ImportReport = { projects: 0, tasks: 0, tags: 0, comments: 0, relations: 0, warnings: [...warnings] };
   const inc = (k: string, n = 1) => { (report[k] as number) += n; };
   try {
     tx(db, () => {
-      const labelsBefore = Number(get(db, 'select count(*) c from labels where user_id = ?', user.id)!.c);
+      const tagsBefore = Number(get(db, 'select count(*) c from tags where user_id = ?', user.id)!.c);
       const projectMap = new Map<number, number>(); // Vikunja's id -> ours
       const taskMap = new Map<number, number>();
       for (const p of projects) {
@@ -103,12 +109,11 @@ export function importVikunja(db: DB, user: { id: number; username: string }, da
         const pid = projectMap.get(p.oldId)!;
         for (const t of p.tasks) {
           const made = createTask(db, user.id, {
-            title: t.title, description: t.description, projectId: pid, done: t.done, dueDate: t.dueDate, startDate: t.startDate, endDate: t.endDate, priority: t.priority, percentDone: t.percentDone,
+            title: t.title, description: t.description, tags: t.labels.map((l) => l.title), projectId: pid, done: t.done, dueDate: t.dueDate, startDate: t.startDate, endDate: t.endDate, priority: t.priority, percentDone: t.percentDone,
             hexColor: t.hexColor, isFavorite: t.isFavorite, position: t.position, repeatAfter: t.repeatAfter, repeatMode: t.repeatMode,
             reminders: t.reminders,
           }, { createdAt: t.created, updatedAt: t.updated });
           if (t.done && t.doneAt) run(db, 'update tasks set done_at = ? where id = ?', t.doneAt, made.id);
-          for (const l of t.labels) run(db, 'insert or ignore into task_labels (task_id, label_id) values (?,?)', made.id, ensureLabel(db, user.id, l.title, l.hexColor, l.description));
           for (const c of t.comments) { addComment(db, user.id, made.id, c.comment, c.author, { created: c.created, updated: c.updated }); inc('comments'); }
           if (t.oldId) taskMap.set(t.oldId, made.id);
           inc('tasks');
@@ -133,7 +138,99 @@ export function importVikunja(db: DB, user: { id: number; username: string }, da
       }
       if (dropped) (report.warnings as string[]).push(`${dropped} task relation${dropped === 1 ? '' : 's'} pointed at tasks that are not in the file and were skipped.`);
       for (const p of projects) if (p.isArchived) { const id = projectMap.get(p.oldId)!; if (!get(db, 'select 1 x from projects where id = ? and is_inbox = 1', id)) updateProject(db, user.id, id, { isArchived: true }); }
-      report.labels = Number(get(db, 'select count(*) c from labels where user_id = ?', user.id)!.c) - labelsBefore;
+      report.tags = Number(get(db, 'select count(*) c from tags where user_id = ?', user.id)!.c) - tagsBefore;
+      if (dry) throw new DryRun();
+    });
+  } catch (e) { if (!(e instanceof DryRun)) throw e; }
+  return { ...report, dry };
+}
+
+// ---------------- TurboKeep (everything, notes and tasks together) ----------------
+
+export function exportTurboKeep(db: DB, userId: number): Uint8Array {
+  const tagRows = all(db, 'select nt.note_id, t.title from note_tags nt join tags t on t.id = nt.tag_id where t.user_id = ? order by t.title', userId);
+  const tags = new Map<string, string[]>();
+  for (const r of tagRows) (tags.get(r.note_id) ?? tags.set(r.note_id, []).get(r.note_id)!).push(r.title);
+  const group = (sql: string) => { const m = new Map<number, any[]>(); for (const r of all(db, sql, userId)) (m.get(r.task_id) ?? m.set(r.task_id, []).get(r.task_id)!).push(r); return m; };
+  const reminders = group('select r.* from task_reminders r join tasks t on t.id = r.task_id where t.user_id = ? order by r.id');
+  const comments = group('select c.* from task_comments c join tasks t on t.id = c.task_id where t.user_id = ? order by c.id');
+  const tasks = new Map<string, any>();
+  for (const t of all(db, 'select * from tasks where user_id = ? order by id', userId)) tasks.set(t.note_id, t);
+  const notes: TkNote[] = all(db, 'select * from notes where user_id = ? order by created_at, id', userId).map((n) => {
+    const t = tasks.get(n.id);
+    return {
+      id: n.id, title: n.title, text: n.text, noteType: n.note_type, pinned: !!n.pinned, archived: !!n.archived, trashed: !!n.trashed, tags: tags.get(n.id) ?? [], createdAt: n.created_at, updatedAt: n.updated_at,
+      task: t ? {
+        projectId: t.project_id, done: !!t.done, doneAt: t.done_at, dueDate: t.due_date, startDate: t.start_date, endDate: t.end_date, priority: t.priority, percentDone: t.percent_done, hexColor: t.hex_color,
+        isFavorite: !!t.is_favorite, position: t.position, repeatAfter: t.repeat_after, repeatMode: t.repeat_mode, createdAt: t.created_at, updatedAt: t.updated_at,
+        reminders: (reminders.get(t.id) ?? []).map((r) => ({ reminder: r.reminder, relativePeriod: r.relative_period, relativeTo: r.relative_to })),
+        comments: (comments.get(t.id) ?? []).map((c) => ({ comment: c.comment, author: c.author, createdAt: c.created_at, updatedAt: c.updated_at })),
+      } : null,
+    };
+  });
+  const bundle: TkBundle = {
+    projects: all(db, 'select * from projects where user_id = ? order by is_inbox desc, id', userId).map((p) => ({
+      id: p.id, title: p.title, description: p.description, hexColor: p.hex_color, parentId: p.parent_id, isArchived: !!p.is_archived, isFavorite: !!p.is_favorite, isInbox: !!p.is_inbox, position: p.position })),
+    notes,
+    relations: all(db, 'select a.note_id as note_id, b.note_id as other_note_id, r.kind from task_relations r join tasks a on a.id = r.task_id join tasks b on b.id = r.other_task_id where a.user_id = ? order by r.task_id, r.other_task_id', userId)
+      .map((r) => ({ noteId: r.note_id, otherNoteId: r.other_note_id, kind: r.kind })),
+  };
+  return buildTurboKeepZip(bundle, VERSION);
+}
+
+export function importTurboKeep(db: DB, user: { id: number; username: string }, data: Uint8Array, dry: boolean): ImportReport {
+  const { bundle, warnings } = guard(() => parseTurboKeep(data));
+  const report: ImportReport = { notes: 0, tasks: 0, projects: 0, tags: 0, comments: 0, relations: 0, skipped: 0, warnings: [...warnings] };
+  const inc = (k: string, n = 1) => { (report[k] as number) += n; };
+  try {
+    tx(db, () => {
+      const tagsBefore = Number(get(db, 'select count(*) c from tags where user_id = ?', user.id)!.c);
+      // projects first, parents before children; one that already exists (same name, same parent) is reused, so a second import adds nothing
+      const projectMap = new Map<number, number>();
+      let pending = bundle.projects.slice();
+      for (let pass = 0; pending.length && pass < 50; pass++) {
+        const later: typeof pending = [];
+        for (const p of pending) {
+          if (p.parentId && !projectMap.has(p.parentId) && bundle.projects.some((x) => x.id === p.parentId)) { later.push(p); continue; }
+          const parent = p.parentId ? projectMap.get(p.parentId) ?? null : null;
+          if (p.isInbox) { projectMap.set(p.id, inbox(db, user.id)); continue; }
+          const same = get(db, 'select id from projects where user_id = ? and title = ? and coalesce(parent_id, 0) = ? and is_inbox = 0', user.id, p.title, parent ?? 0);
+          if (same) { projectMap.set(p.id, same.id); continue; }
+          const made = createProject(db, user.id, { title: p.title, description: p.description, hexColor: p.hexColor, parentId: parent, isFavorite: p.isFavorite, position: p.position });
+          if (p.isArchived) updateProject(db, user.id, made.id, { isArchived: true });
+          projectMap.set(p.id, made.id); inc('projects');
+        }
+        pending = later;
+      }
+      const noteMap = new Map<string, string>(); // id in the file -> id here (they differ only when another account on this server already has that id)
+      for (const n of bundle.notes) {
+        let id = n.id;
+        const existing = get(db, 'select user_id from notes where id = ?', id);
+        if (existing?.user_id === user.id) { inc('skipped'); noteMap.set(n.id, id); continue; }
+        if (existing) id = crypto.randomUUID();
+        createNote(db, user.id, { title: n.title, text: n.text, noteType: n.noteType, pinned: n.pinned, archived: n.archived, trashed: n.trashed, tags: n.tags }, { id, createdAt: n.createdAt, updatedAt: n.updatedAt });
+        noteMap.set(n.id, id); inc('notes');
+        if (n.task) {
+          const t = n.task;
+          const made = createTask(db, user.id, { noteId: id, projectId: projectMap.get(t.projectId), done: t.done, dueDate: t.dueDate, startDate: t.startDate, endDate: t.endDate, priority: t.priority, percentDone: t.percentDone,
+            hexColor: t.hexColor, isFavorite: t.isFavorite, position: t.position, repeatAfter: t.repeatAfter, repeatMode: t.repeatMode, reminders: t.reminders }, { createdAt: t.createdAt, updatedAt: t.updatedAt });
+          if (t.done && t.doneAt) run(db, 'update tasks set done_at = ? where id = ?', t.doneAt, made.id);
+          for (const c of t.comments) { addComment(db, user.id, made.id, c.comment, c.author, { created: c.createdAt, updated: c.updatedAt }); inc('comments'); }
+          inc('tasks');
+        }
+      }
+      let dropped = 0;
+      for (const r of bundle.relations) {
+        const a = noteMap.get(r.noteId), b = noteMap.get(r.otherNoteId);
+        const ta = a && get(db, 'select id from tasks where note_id = ? and user_id = ?', a, user.id), tb = b && get(db, 'select id from tasks where note_id = ? and user_id = ?', b, user.id);
+        if (!ta || !tb || ta.id === tb.id || !(r.kind in INVERSE)) { dropped++; continue; }
+        const had = get(db, 'select 1 x from task_relations where task_id = ? and other_task_id = ? and kind = ?', ta.id, tb.id, r.kind);
+        run(db, 'insert or ignore into task_relations (task_id, other_task_id, kind) values (?,?,?)', ta.id, tb.id, r.kind);
+        run(db, 'insert or ignore into task_relations (task_id, other_task_id, kind) values (?,?,?)', tb.id, ta.id, INVERSE[r.kind]);
+        if (!had) inc('relations');
+      }
+      if (dropped) (report.warnings as string[]).push(`${dropped} relation${dropped === 1 ? '' : 's'} could not be restored (a task they name is not in the file).`);
+      report.tags = Number(get(db, 'select count(*) c from tags where user_id = ?', user.id)!.c) - tagsBefore;
       if (dry) throw new DryRun();
     });
   } catch (e) { if (!(e instanceof DryRun)) throw e; }

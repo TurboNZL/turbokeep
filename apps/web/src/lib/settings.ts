@@ -14,11 +14,13 @@ export interface DeviceSettings {
   noteFont: 'sans' | 'mono';
   /** Show the Markdown preview next to the editor for notes of type markdown. */
   notePreview: boolean;
+  /** Google Keep style: notes and tasks as a wall of cards, an item opens in a window. */
+  keepView: boolean;
 }
 
 export const DEFAULT_SETTINGS: DeviceSettings = {
   theme: 'auto', ui: 'auto', layout: 'side', glass: 'regular', wallpaper: false, wallpaperDarkness: 0.35, wallpaperCustom: false,
-  themeUpdates: true, themesToken: '', noteFont: 'sans', notePreview: true,
+  themeUpdates: true, themesToken: '', noteFont: 'sans', notePreview: true, keepView: false,
 };
 
 const KEY = 'turbokeep.settings';

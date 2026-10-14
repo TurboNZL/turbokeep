@@ -6,9 +6,11 @@ import type { Config } from './config.ts';
 import { type DB, all, get, run } from './db.ts';
 import { COOKIE, LoginLimiter, type AuthUser, clientIp, createSession, hashPassword, isHttps, requireAuth, verifyPassword } from './auth.ts';
 import * as S from './store.ts';
-import { exportStandardNotes, exportVikunja, importStandardNotes, importVikunja } from './io.ts';
+import { exportStandardNotes, exportTurboKeep, exportVikunja, importStandardNotes, importTurboKeep, importVikunja } from './io.ts';
+import { VERSION } from './version.ts';
+import type { Updater } from './update.ts';
 
-export const VERSION = process.env.TURBOKEEP_VERSION ?? 'dev';
+export { VERSION };
 type Env = { Variables: { user: AuthUser } };
 
 const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff', '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8', '.map': 'application/json' };
@@ -16,7 +18,7 @@ const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js
 const int = (v: string | undefined) => { const n = Number(v); return Number.isInteger(n) && n > 0 ? n : undefined; };
 const USERNAME = /^[A-Za-z0-9_.-]{2,40}$/;
 
-export function createApp(db: DB, cfg: Config, setup: { code: string | null } = { code: null }) {
+export function createApp(db: DB, cfg: Config, setup: { code: string | null } = { code: null }, updater?: Updater) {
   const app = new Hono<Env>();
   const limiter = new LoginLimiter();
   const auth = requireAuth(db, cfg);
@@ -81,7 +83,19 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
     deleteCookie(c, COOKIE, { path: '/' });
     return c.json({ ok: true });
   });
-  app.get('/api/auth/me', (c) => c.json({ user: { id: c.get('user').id, username: c.get('user').username } }));
+  // the owner is the first account (the one made with the setup code): only they may update the server
+  const isOwner = (id: number) => get(db, 'select min(id) m from users')?.m === id;
+  app.get('/api/auth/me', (c) => c.json({ user: { id: c.get('user').id, username: c.get('user').username, owner: isOwner(c.get('user').id) } }));
+  app.get('/api/admin/update', (c) => {
+    if (!isOwner(c.get('user').id)) throw new S.HttpError(403, 'Only the owner (the first account) can update the server.');
+    return c.json({ available: !!updater?.available, restarts: !!updater?.restarts, ...(updater?.state() ?? { status: 'idle', log: [], startedAt: null, restarting: false }) });
+  });
+  app.post('/api/admin/update', (c) => {
+    if (!isOwner(c.get('user').id)) throw new S.HttpError(403, 'Only the owner (the first account) can update the server.');
+    if (!updater?.available) throw new S.HttpError(404, 'This server cannot update itself.');
+    if (!updater.start()) throw new S.HttpError(409, 'An update is already running.');
+    return c.json({ ok: true }, 202);
+  });
   app.post('/api/auth/password', async (c) => {
     const u = c.get('user'), b = await c.req.json().catch(() => ({}));
     const row = get(db, 'select * from users where id = ?', u.id)!;
@@ -100,31 +114,36 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
   });
   app.delete('/api/tokens/:id', (c) => { run(db, "delete from sessions where user_id = ? and kind = 'api' and substr(token_hash,1,16) = ?", c.get('user').id, c.req.param('id')); return c.json({ ok: true }); });
 
-  // ---- notes ----
+  // ---- notes (a note can carry a task) ----
   const uid = (c: any) => (c.get('user') as AuthUser).id;
   const body = async (c: any) => (await c.req.json().catch(() => { throw new S.HttpError(400, 'Invalid JSON'); })) ?? {};
-  app.get('/api/notes', (c) => c.json(S.listNotes(db, uid(c), { view: (c.req.query('view') as any) || 'notes', tag: c.req.query('tag') || undefined, q: c.req.query('q') || undefined })));
+  const bool3 = (v: string | undefined) => (v === undefined || v === '' ? undefined : v === 'true' || v === '1');
+  app.get('/api/notes', (c) => {
+    const q = c.req.query();
+    return c.json(S.listNotes(db, uid(c), { view: (q.view as any) || 'notes', kind: (q.kind as any) || 'all', tag: q.tag || undefined, q: q.q || undefined, done: bool3(q.done), due: q.due as any, favorites: q.favorites === '1', projectId: int(q.project) }));
+  });
   app.post('/api/notes', async (c) => c.json(S.createNote(db, uid(c), await body(c)), 201));
   app.post('/api/notes/empty-trash', (c) => c.json({ deleted: S.emptyTrash(db, uid(c)) }));
-  app.get('/api/notes/:id', (c) => c.json(S.getNote(db, uid(c), c.req.param('id'))));
+  app.get('/api/notes/:id', (c) => c.json(S.getNoteDetail(db, uid(c), c.req.param('id'))));
   app.patch('/api/notes/:id', async (c) => { const b = await body(c); return c.json(S.updateNote(db, uid(c), c.req.param('id'), b, typeof b.base === 'string' ? b.base : undefined)); });
   app.delete('/api/notes/:id', (c) => { S.deleteNote(db, uid(c), c.req.param('id')); return c.json({ ok: true }); });
+  // the task of a note: make one, change it, take it off (the note stays)
+  app.put('/api/notes/:id/task', async (c) => c.json(S.createTask(db, uid(c), { ...(await body(c)), noteId: c.req.param('id') }), 201));
+  app.patch('/api/notes/:id/task', async (c) => { const n = S.getNote(db, uid(c), c.req.param('id')); if (!n.task) throw new S.HttpError(404, 'That note is not a task'); return c.json(S.updateTask(db, uid(c), n.task.id, await body(c))); });
+  app.delete('/api/notes/:id/task', (c) => { S.detachTask(db, uid(c), c.req.param('id')); return c.json({ ok: true }); });
   app.get('/api/tags', (c) => c.json(S.listTags(db, uid(c))));
   app.patch('/api/tags', async (c) => { const b = await body(c); S.renameTag(db, uid(c), String(b.from ?? ''), String(b.to ?? '')); return c.json({ ok: true }); });
   app.delete('/api/tags', (c) => { S.deleteTag(db, uid(c), c.req.query('title') ?? ''); return c.json({ ok: true }); });
 
-  // ---- projects, labels, tasks ----
+  // ---- projects and tasks ----
   app.get('/api/projects', (c) => c.json(S.listProjects(db, uid(c))));
   app.post('/api/projects', async (c) => c.json(S.createProject(db, uid(c), await body(c)), 201));
   app.patch('/api/projects/:id', async (c) => c.json(S.updateProject(db, uid(c), Number(c.req.param('id')), await body(c))));
   app.delete('/api/projects/:id', (c) => { S.deleteProject(db, uid(c), Number(c.req.param('id'))); return c.json({ ok: true }); });
-  app.get('/api/labels', (c) => c.json(S.listLabels(db, uid(c))));
-  app.patch('/api/labels/:id', async (c) => c.json(S.updateLabel(db, uid(c), Number(c.req.param('id')), await body(c))));
-  app.delete('/api/labels/:id', (c) => { S.deleteLabel(db, uid(c), Number(c.req.param('id'))); return c.json({ ok: true }); });
 
   app.get('/api/tasks', (c) => {
-    const q = c.req.query(), done = q.done === undefined ? undefined : q.done === 'true' || q.done === '1';
-    return c.json(S.listTasks(db, uid(c), { projectId: int(q.project), done, q: q.q, due: q.due as any, labelId: int(q.label), favorites: q.favorites === '1' }));
+    const q = c.req.query();
+    return c.json(S.listTasks(db, uid(c), { projectId: int(q.project), done: bool3(q.done), q: q.q, due: q.due as any, tag: q.tag || q.label || undefined, favorites: q.favorites === '1' }));
   });
   app.post('/api/tasks', async (c) => c.json(S.createTask(db, uid(c), await body(c)), 201));
   app.get('/api/tasks/:id', (c) => c.json(S.getTask(db, uid(c), Number(c.req.param('id')))));
@@ -139,6 +158,7 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
   const stamp = () => new Date().toISOString().slice(0, 10);
   const download = (c: any, data: Uint8Array, name: string) => c.body(data, 200, { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${name}"` });
   app.get('/api/export/standardnotes', (c) => download(c, exportStandardNotes(db, uid(c), c.req.query('plain') === '1'), `turbokeep-standard-notes-${stamp()}${c.req.query('plain') === '1' ? '-plaintext' : ''}.zip`));
+  app.get('/api/export/turbokeep', (c) => download(c, exportTurboKeep(db, uid(c)), `turbokeep-${stamp()}.zip`));
   app.get('/api/export/vikunja', (c) => {
     const { zip, droppedRelations } = exportVikunja(db, c.get('user'), { crossProject: c.req.query('relations') === 'all' });
     c.header('X-Dropped-Relations', String(droppedRelations)); // see formats/vikunja.ts: why relations between projects are left out by default
@@ -157,6 +177,7 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
     return out;
   }
   app.post('/api/import/standardnotes', async (c) => c.json(importStandardNotes(db, uid(c), await uploads(c), c.req.query('dry') === '1')));
+  app.post('/api/import/turbokeep', async (c) => c.json(importTurboKeep(db, c.get('user'), (await uploads(c))[0]!.data, c.req.query('dry') === '1')));
   app.post('/api/import/vikunja', async (c) => c.json(importVikunja(db, c.get('user'), (await uploads(c))[0]!.data, c.req.query('dry') === '1')));
 
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));

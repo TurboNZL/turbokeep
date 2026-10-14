@@ -9,9 +9,11 @@
     "guides-and-docs",
     "settings-shell",
     "logos",
-    "docker-self-host"
+    "server-install-update",
+    "updaters",
+    "android-shell"
   ],
   "themes": "on",
   "moved": {},
-  "notes": "A web-only app: the page is served by its own server, packaged as ONE Docker image (and a Node tarball). Deliberate differences from the 'self-hosted-server' set: (1) NO server-install-update (no Linux installer/Windows tray: Docker is the install, 'docker compose pull' is the update, written in docs/guides/BACKUP_AND_UPDATE.md), (2) NO updaters (no desktop or Android build), (3) NO cloudflare-access token fields in Settings: the web client is same-origin with the API, so the browser's own Access cookie covers every request; service-token headers are only needed for scripts and are documented in docs/guides/CLOUDFLARE_TUNNEL.md. Revisit all three the day a desktop or Android client exists. Release workflow has docker + node-bundle jobs instead of desktop/android. Standard Notes and Vikunja import/export live in apps/server/src/formats and are checked against the real formats (see docs/development/FORMATS.md). Descriptions are plain text; Vikunja HTML is flattened on import and wrapped in <p> on export on purpose."
+  "notes": "Server: the engine's 'self-hosted-server' way (native systemd service via scripts/install-pi.sh, scripts/update.sh, owner-only Update server button); Docker was used first and removed. Deliberate differences: (1) the server is built (esbuild bundle apps/server/dist/server.mjs), so update.sh runs `pnpm build`, and the installer clones with tags (the version shown comes from `git describe`); (2) the first account is the owner (lowest user id, no is_admin column) and needs a setup code the installer sets; (3) NO cloudflare-access Settings fields in the web page: the web page is same-origin so the browser's Access cookie covers it; the Android app takes an optional service token on its own address screen, used only by the widget; (4) NO device-pairing code: the Android app shows the server's page in a WebView and the page hands a token to the widget through the bridge; (5) Android shell differs from the engine's android-shell: it loads the SERVER's page instead of a bundled copy at http://localhost (no version skew, no CORS), applicationId app.turbokeep.android, widget + quick add + share target instead of media playback, OkHttp for native calls. Standard Notes, Vikunja and TurboKeep bundle import/export live in apps/server/src/formats and io.ts. A task is a note with a task attached (schema v2)."
 }
