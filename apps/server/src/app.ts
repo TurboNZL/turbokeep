@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { compress } from 'hono/compress';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep } from 'node:path';
@@ -24,6 +25,7 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
   const auth = requireAuth(db, cfg);
   const userCount = () => Number(get(db, 'select count(*) c from users')!.c);
 
+  app.use('*', compress()); // the page, its scripts and the JSON answers, gzip or deflate when the browser accepts it
   app.use('*', async (c, next) => {
     await next();
     c.header('X-Content-Type-Options', 'nosniff');
@@ -120,7 +122,9 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
   const bool3 = (v: string | undefined) => (v === undefined || v === '' ? undefined : v === 'true' || v === '1');
   app.get('/api/notes', (c) => {
     const q = c.req.query();
-    return c.json(S.listNotes(db, uid(c), { view: (q.view as any) || 'notes', kind: (q.kind as any) || 'all', tag: q.tag || undefined, q: q.q || undefined, done: bool3(q.done), due: q.due as any, favorites: q.favorites === '1', projectId: int(q.project) }));
+    const list = S.listNotes(db, uid(c), { view: (q.view as any) || 'notes', kind: (q.kind as any) || 'all', tag: q.tag || undefined, q: q.q || undefined, done: bool3(q.done), due: q.due as any, favorites: q.favorites === '1', projectId: int(q.project) });
+    // the list only needs a preview of each text (the open note is fetched whole): `excerpt=1` keeps the answer small on a big library
+    return c.json(q.excerpt === '1' ? list.map((n) => (n.text.length > 400 ? { ...n, text: n.text.slice(0, 400) } : n)) : list);
   });
   app.post('/api/notes', async (c) => c.json(S.createNote(db, uid(c), await body(c)), 201));
   app.post('/api/notes/empty-trash', (c) => c.json({ deleted: S.emptyTrash(db, uid(c)) }));
@@ -132,7 +136,13 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
   app.patch('/api/notes/:id/task', async (c) => { const n = S.getNote(db, uid(c), c.req.param('id')); if (!n.task) throw new S.HttpError(404, 'That note is not a task'); return c.json(S.updateTask(db, uid(c), n.task.id, await body(c))); });
   app.delete('/api/notes/:id/task', (c) => { S.detachTask(db, uid(c), c.req.param('id')); return c.json({ ok: true }); });
   app.get('/api/tags', (c) => c.json(S.listTags(db, uid(c))));
-  app.patch('/api/tags', async (c) => { const b = await body(c); S.renameTag(db, uid(c), String(b.from ?? ''), String(b.to ?? '')); return c.json({ ok: true }); });
+  // {from, to} renames; {title, emoji, color} sets the tag's look (either may be sent, '' clears)
+  app.patch('/api/tags', async (c) => {
+    const b = await body(c);
+    if (b.from !== undefined) S.renameTag(db, uid(c), String(b.from), String(b.to ?? ''));
+    if (b.emoji !== undefined || b.color !== undefined) S.styleTag(db, uid(c), String(b.title ?? b.to ?? b.from ?? ''), b);
+    return c.json({ ok: true });
+  });
   app.delete('/api/tags', (c) => { S.deleteTag(db, uid(c), c.req.query('title') ?? ''); return c.json({ ok: true }); });
 
   // ---- projects and tasks ----

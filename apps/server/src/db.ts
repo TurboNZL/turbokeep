@@ -40,6 +40,8 @@ create table if not exists tags (
   id text primary key,
   user_id integer not null references users(id) on delete cascade,
   title text not null,
+  emoji text not null default '',
+  color text not null default '',
   created_at text not null,
   unique (user_id, title)
 );
@@ -134,6 +136,8 @@ export const MIGRATIONS: Migration[] = [
     }
     db.exec('drop table task_labels; drop table labels; alter table tasks drop column title; alter table tasks drop column description; create unique index tasks_note on tasks(note_id)');
   },
+  // 2 -> 3: a tag can have an emoji and a colour
+  "alter table tags add column emoji text not null default ''; alter table tags add column color text not null default ''",
 ];
 export const SCHEMA_VERSION = 1 + MIGRATIONS.length;
 

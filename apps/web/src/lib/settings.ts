@@ -16,11 +16,14 @@ export interface DeviceSettings {
   notePreview: boolean;
   /** Google Keep style: notes and tasks as a wall of cards, an item opens in a window. */
   keepView: boolean;
+  /** How the notes are ordered. 'auto': newest first on the Keep wall, the server's order (due dates for tasks) in the list. */
+  sort: SortId;
 }
+export type SortId = 'auto' | 'newest' | 'edited' | 'oldest' | 'title';
 
 export const DEFAULT_SETTINGS: DeviceSettings = {
   theme: 'auto', ui: 'auto', layout: 'side', glass: 'regular', wallpaper: false, wallpaperDarkness: 0.35, wallpaperCustom: false,
-  themeUpdates: true, themesToken: '', noteFont: 'sans', notePreview: true, keepView: false,
+  themeUpdates: true, themesToken: '', noteFont: 'sans', notePreview: true, keepView: false, sort: 'auto',
 };
 
 const KEY = 'turbokeep.settings';

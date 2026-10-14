@@ -34,3 +34,26 @@ describe('dates', () => {
     expect(fromLocalInput('')).toBeNull();
   });
 });
+
+import { filterFromSearch, sortNotes, viewParams } from './views.ts';
+import type { Note } from './api.ts';
+const note = (title: string, createdAt: string, updatedAt: string, pinned = false): Note => ({ id: title, title, text: '', noteType: 'plain-text', pinned, archived: false, trashed: false, tags: [], createdAt, updatedAt, task: null });
+
+describe('sorting and the address', () => {
+  const list = [note('b', '2026-01-02', '2026-03-01'), note('a', '2026-01-03', '2026-02-01'), note('c', '2026-01-01', '2026-04-01', true)];
+  it('auto is newest first on the wall and untouched in the list; pinned notes stay on top', () => {
+    expect(sortNotes(list, 'auto', true).map((n) => n.title)).toEqual(['c', 'a', 'b']);
+    expect(sortNotes(list, 'auto', false)).toBe(list);
+  });
+  it('the other orders', () => {
+    expect(sortNotes(list, 'oldest', true).map((n) => n.title)).toEqual(['c', 'b', 'a']);
+    expect(sortNotes(list, 'edited', true).map((n) => n.title)).toEqual(['c', 'b', 'a']);
+    expect(sortNotes(list, 'title', false).map((n) => n.title)).toEqual(['c', 'a', 'b']);
+  });
+  it('reads the filter from the address and asks the server for excerpts', () => {
+    const f = filterFromSearch(new URLSearchParams('view=tasks&tag=home&q=x&done=1'));
+    expect(f).toEqual({ view: 'tasks', tag: 'home', project: undefined, q: 'x', showDone: true });
+    expect(filterFromSearch(new URLSearchParams('view=bogus')).view).toBe('inbox');
+    expect(viewParams(f)).toMatchObject({ kind: 'tasks', tag: 'home', q: 'x', excerpt: '1' });
+  });
+});

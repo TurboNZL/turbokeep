@@ -137,7 +137,8 @@ function setNoteTags(db: DB, userId: number, noteId: string, tags: unknown) {
   const titles = [...new Set((Array.isArray(tags) ? tags : []).map(cleanTag).filter(Boolean))];
   run(db, 'delete from note_tags where note_id = ?', noteId);
   for (const t of titles) run(db, 'insert or ignore into note_tags (note_id, tag_id) values (?,?)', noteId, ensureTag(db, userId, t));
-  run(db, 'delete from tags where user_id = ? and id not in (select tag_id from note_tags)', userId);
+  // a tag that has a look (emoji or colour) stays when its last note goes, so the look is not lost
+  run(db, "delete from tags where user_id = ? and emoji = '' and color = '' and id not in (select tag_id from note_tags)", userId);
 }
 
 export interface NoteInput { title?: string; text?: string; noteType?: string; pinned?: boolean; archived?: boolean; trashed?: boolean; tags?: string[] }
@@ -172,16 +173,30 @@ export function updateNote(db: DB, userId: number, id: string, i: NoteInput, bas
 export function deleteNote(db: DB, userId: number, id: string) {
   const r = run(db, 'delete from notes where id = ? and user_id = ?', id, userId); // its task goes with it (foreign key)
   if (!r.changes) throw new HttpError(404, 'Note not found');
-  run(db, 'delete from tags where user_id = ? and id not in (select tag_id from note_tags)', userId);
+  // a tag that has a look (emoji or colour) stays when its last note goes, so the look is not lost
+  run(db, "delete from tags where user_id = ? and emoji = '' and color = '' and id not in (select tag_id from note_tags)", userId);
 }
 export function emptyTrash(db: DB, userId: number): number {
   const n = Number(run(db, 'delete from notes where user_id = ? and trashed = 1', userId).changes);
-  run(db, 'delete from tags where user_id = ? and id not in (select tag_id from note_tags)', userId);
+  // a tag that has a look (emoji or colour) stays when its last note goes, so the look is not lost
+  run(db, "delete from tags where user_id = ? and emoji = '' and color = '' and id not in (select tag_id from note_tags)", userId);
   return n;
 }
 export function listTags(db: DB, userId: number) {
-  return all(db, `select t.title, count(n.id) as count from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id and n.trashed = 0
-    where t.user_id = ? group by t.id order by t.title`, userId).map((r) => ({ title: r.title as string, count: Number(r.count) }));
+  return all(db, `select t.title, t.emoji, t.color, count(n.id) as count from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id and n.trashed = 0
+    where t.user_id = ? group by t.id order by t.title`, userId).map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, count: Number(r.count) }));
+}
+/** The look of a tag: at most one emoji (or a short symbol) and a six-digit colour without '#'; empty clears it. */
+export function styleTag(db: DB, userId: number, title: string, style: { emoji?: unknown; color?: unknown }) {
+  const src = get(db, 'select id, emoji, color from tags where user_id = ? and title = ?', userId, title);
+  if (!src) throw new HttpError(404, 'Tag not found');
+  let emoji = String(src.emoji), color = String(src.color);
+  if (style.emoji !== undefined) { emoji = [...String(style.emoji).trim()].slice(0, 4).join(''); }
+  if (style.color !== undefined) {
+    color = String(style.color).trim().replace(/^#/, '').toLowerCase();
+    if (color && !/^[0-9a-f]{6}$/.test(color)) throw new HttpError(400, 'A colour is six hex digits, like ff8800');
+  }
+  run(db, 'update tags set emoji = ?, color = ? where id = ?', emoji, color, src.id);
 }
 export function renameTag(db: DB, userId: number, from: string, to: string) {
   const dest = cleanTag(to);
@@ -191,6 +206,8 @@ export function renameTag(db: DB, userId: number, from: string, to: string) {
     if (!src) throw new HttpError(404, 'Tag not found');
     const existing = get(db, 'select id from tags where user_id = ? and title = ?', userId, dest);
     if (!existing) { run(db, 'update tags set title = ? where id = ?', dest, src.id); return; }
+    const sty = get(db, 'select emoji, color from tags where id = ?', src.id)!;
+    run(db, "update tags set emoji = case when emoji = '' then ? else emoji end, color = case when color = '' then ? else color end where id = ?", sty.emoji, sty.color, existing.id);
     if (existing.id === src.id) return;
     run(db, 'insert or ignore into note_tags (note_id, tag_id) select note_id, ? from note_tags where tag_id = ?', existing.id, src.id);
     run(db, 'delete from tags where id = ?', src.id);

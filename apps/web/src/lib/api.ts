@@ -30,7 +30,8 @@ export interface Task {
 }
 /** One note with its whole task (when it has one). */
 export type NoteDetail = Omit<Note, 'task'> & { task: Task | null };
-export interface NoteParams { view?: string; kind?: string; tag?: string; q?: string; done?: string; due?: string; favorites?: string; project?: string }
+export interface TagInfo { title: string; emoji: string; color: string; count: number }
+export interface NoteParams { excerpt?: string; view?: string; kind?: string; tag?: string; q?: string; done?: string; due?: string; favorites?: string; project?: string }
 export interface Report { warnings: string[]; dry: boolean; [k: string]: number | string[] | boolean }
 export interface ServerUpdate { available: boolean; restarts: boolean; status: 'idle' | 'running' | 'done' | 'error'; log: string[]; startedAt: number | null; restarting: boolean }
 export interface SetupInfo { needsSetup: boolean; setupCodeRequired: boolean; allowSignup: boolean; version: string }
@@ -59,7 +60,8 @@ export const api = {
   makeTask: (noteId: string, t: Record<string, unknown> = {}) => req<Task>('PUT', `/api/notes/${noteId}/task`, t),
   patchTask: (noteId: string, t: Record<string, unknown>) => req<Task>('PATCH', `/api/notes/${noteId}/task`, t),
   detachTask: (noteId: string) => req<unknown>('DELETE', `/api/notes/${noteId}/task`),
-  tags: () => req<{ title: string; count: number }[]>('GET', '/api/tags'),
+  tags: () => req<TagInfo[]>('GET', '/api/tags'),
+  styleTag: (title: string, look: { emoji?: string; color?: string }) => req<unknown>('PATCH', '/api/tags', { title, ...look }),
   renameTag: (from: string, to: string) => req<unknown>('PATCH', '/api/tags', { from, to }),
   deleteTag: (title: string) => req<unknown>('DELETE', `/api/tags?title=${encodeURIComponent(title)}`),
 

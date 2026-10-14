@@ -24,7 +24,8 @@ export interface TkNote {
   task: TkTask | null;
 }
 export interface TkRelation { noteId: string; otherNoteId: string; kind: string }
-export interface TkBundle { projects: TkProject[]; notes: TkNote[]; relations: TkRelation[] }
+export interface TkTagStyle { title: string; emoji: string; color: string }
+export interface TkBundle { projects: TkProject[]; notes: TkNote[]; relations: TkRelation[]; /** tags that have an emoji or a colour (optional: older backups have none) */ tagStyles: TkTagStyle[] }
 
 export function buildTurboKeepZip(bundle: TkBundle, appVersion: string): Uint8Array {
   const json = JSON.stringify({ format: FORMAT, version: FORMAT_VERSION, exportedAt: new Date().toISOString(), appVersion, ...bundle }, null, 1);
@@ -78,5 +79,7 @@ export function parseTurboKeep(data: Uint8Array): { bundle: TkBundle; warnings: 
   }
   const relations: TkRelation[] = (Array.isArray(j.relations) ? j.relations : []).filter((r: any) => r && typeof r.noteId === 'string' && typeof r.otherNoteId === 'string' && typeof r.kind === 'string')
     .map((r: any) => ({ noteId: r.noteId.toLowerCase(), otherNoteId: r.otherNoteId.toLowerCase(), kind: r.kind }));
-  return { bundle: { projects, notes, relations }, warnings };
+  const tagStyles: TkTagStyle[] = (Array.isArray(j.tagStyles) ? j.tagStyles : []).filter((t: any) => t && typeof t.title === 'string' && t.title).map((t: any) => ({
+    title: String(t.title).slice(0, 200), emoji: typeof t.emoji === 'string' ? [...t.emoji].slice(0, 4).join('') : '', color: /^[0-9a-f]{6}$/i.test(String(t.color ?? '')) ? String(t.color).toLowerCase() : '' }));
+  return { bundle: { projects, notes, relations, tagStyles }, warnings };
 }

@@ -14,11 +14,14 @@ Open the address it prints (`http://<the server's address>:47901`; a Raspberry P
 To reach it from outside your home: [CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md).
 
 ## 2. Home: notes and tasks together
-Everything is a **note**; a note can also be a **task** (a checkbox, dates, priority, reminders, repeat, related tasks and comments). **Home** shows them in one list with the note you are reading beside it, and **tags on the left**: one click on a tag shows only those notes. The buttons of the side bar (the dock on a phone) choose the view: **Inbox** (everything), **Today**, **Tasks**, **Notes**, **Next 7 days**, **Overdue**, **Starred**, **Archive**, **Trash**.
+Everything is a **note**; a note can also be a **task** (a checkbox, dates, priority, reminders, repeat, related tasks and comments). **Home** shows them in one list with the note you are reading beside it, and **tags on the left**: one click on a tag shows only those notes. The buttons of the side bar (the dock on a phone) choose the view: **Home** (everything), **Today**, **Tasks**, **Notes**, **Next 7 days**, **Overdue**, **Starred**, **Archive**, **Trash**.
 
 - **New note** starts a note titled with the date and time, like *Wednesday, 14 Oct 2026 at 20:37*; rename it any time. The box above the list adds a task: type a title, press Enter.
 - Everything saves by itself (the small word above the title says *Saved*). Add tags under the text; pin, archive or trash with the buttons above it. *Make a task* gives a note a checkbox and dates; *Not a task* takes them off and keeps the note. If the same note is changed on two devices, the second save is not allowed to overwrite the first: you are asked whether to keep yours or take theirs.
 - The note you are reading stays open when you switch views or visit Settings.
+- A task is a note with a checkbox. The arrow on its row opens it in place: the rest of its text, its dates and its sub-tasks as checkboxes of their own. In the **Tasks** view the tasks are listed under their **tags** (a task with no tag is under *Tasks*).
+- **Tags** can have an **emoji** and a **colour**: hover a tag in the left column and press the pencil (on a phone, select the tag first). The look shows everywhere the tag does, and is kept in the TurboKeep backup.
+- The **sort** menu above the list orders notes: *Automatic* (newest first on the Keep wall, due dates for tasks in the list), newest, recently edited, oldest, A to Z.
 - **Lists** (below the tags) group tasks the way projects do.
 - Settings > Appearance > **Google Keep view** shows the notes as a wall of cards (a card opens the note in a window).
 
