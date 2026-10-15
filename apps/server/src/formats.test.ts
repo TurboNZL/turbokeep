@@ -71,28 +71,26 @@ describe('Standard Notes', () => {
 
 describe('Vikunja', () => {
   const user = { id: 1, username: 'me', created: '2024-01-01T00:00:00.000Z' };
-  const task = (o: any = {}) => ({ id: 10, projectId: 2, index: 1, title: 'Pay rent', description: 'soon\nvery soon\n\nsecond <b> paragraph & more', done: false, doneAt: null, dueDate: '2030-05-01T09:00:00.000Z', startDate: null, endDate: null, priority: 3, percentDone: 0.5, hexColor: 'ff0000', isFavorite: true, position: 65536, repeatAfter: 86400, repeatMode: 0, created: '2024-01-01T00:00:00.000Z', updated: '2024-01-02T00:00:00.000Z', labels: [{ id: 1, title: 'money', description: '', hexColor: '00ff00', created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z' }], reminders: [{ reminder: '2030-04-30T09:00:00.000Z', relativePeriod: 0, relativeTo: '' }], related: { subtask: [{ id: 11, title: 'Find cheque book', projectId: 2 }] }, comments: [{ id: 1, comment: 'ok', author: 'me', created: '2024-01-03T00:00:00.000Z', updated: '2024-01-03T00:00:00.000Z' }], ...o });
-  const project = (tasks: any[] = [task()], o: any = {}) => ({ id: 2, parentId: null, title: 'Home', description: '', hexColor: '112233', isArchived: false, isFavorite: false, position: 1, created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z', tasks, ...o });
+  const task = (o: any = {}) => ({ id: 10, index: 1, title: 'Pay rent', description: 'soon\nvery soon\n\nsecond <b> paragraph & more', done: false, doneAt: null, dueDate: '2030-05-01T09:00:00.000Z', percentDone: 0.5, isFavorite: true, position: 65536, created: '2024-01-01T00:00:00.000Z', updated: '2024-01-02T00:00:00.000Z', labels: [{ id: 1, title: 'money', hexColor: '00ff00', created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z' }], ...o });
+  const project = (tasks: any[] = [task()]) => ({ id: 1, title: 'TurboKeep', created: '2024-01-01T00:00:00.000Z', updated: '2024-01-01T00:00:00.000Z', tasks });
 
   it('writes VERSION and data.json with Vikunja\'s field names and zero times', () => {
-    const files = unzipSync(buildVikunjaZip(user, [project([task({ dueDate: null }), task({ id: 11, title: 'Find cheque book', related: { parenttask: [{ id: 10, title: 'Pay rent', projectId: 2 }] }, reminders: [] })])]).zip);
+    const files = unzipSync(buildVikunjaZip(user, project([task({ dueDate: null }), task({ id: 11, title: 'Find cheque book', done: true, doneAt: '2024-02-02T00:00:00.000Z', labels: [] })])));
     expect(Object.keys(files).sort()).toEqual(['VERSION', 'data.json']);
     expect(strFromU8(files.VERSION!)).toBe('1.0.0');
     const data = JSON.parse(strFromU8(files['data.json']!));
     expect(data).toHaveLength(1);
     const t = data[0].tasks[0];
-    expect(data[0]).toMatchObject({ id: 2, title: 'Home', hex_color: '112233', parent_project_id: 0, is_archived: false });
-    expect(t).toMatchObject({ id: 10, title: 'Pay rent', project_id: 2, due_date: ZERO_TIME, done_at: ZERO_TIME, priority: 3, percent_done: 0.5, repeat_after: 86400, identifier: '#1', is_favorite: true });
+    expect(data[0]).toMatchObject({ id: 1, title: 'TurboKeep', parent_project_id: 0, is_archived: false });
+    expect(t).toMatchObject({ id: 10, title: 'Pay rent', project_id: 1, due_date: ZERO_TIME, done_at: ZERO_TIME, priority: 0, percent_done: 0.5, repeat_after: 0, identifier: '#1', is_favorite: true, related_tasks: {} });
     expect(t.labels[0]).toMatchObject({ title: 'money', hex_color: '00ff00' });
-    expect(t.related_tasks).toEqual({}); // 10 comes first: the pair is written once, from the later task
-    expect(data[0].tasks[1].related_tasks.parenttask[0]).toMatchObject({ id: 10 });
-    expect(data[0].tasks[1].reminders).toBeNull();
+    expect(data[0].tasks[1]).toMatchObject({ done: true, done_at: '2024-02-02T00:00:00.000Z', labels: null, reminders: null });
   });
 
   it('reads back what it wrote', () => {
-    const { projects } = parseVikunja(buildVikunjaZip(user, [project()]).zip);
-    expect(projects[0]).toMatchObject({ oldId: 2, title: 'Home', hexColor: '112233', parentOldId: null });
-    expect(projects[0]!.tasks[0]).toMatchObject({ oldId: 10, title: 'Pay rent', description: 'soon\nvery soon\n\nsecond <b> paragraph & more', dueDate: '2030-05-01T09:00:00.000Z', doneAt: null, startDate: null, priority: 3, labels: [{ title: 'money', hexColor: '00ff00' }], reminders: [{ reminder: '2030-04-30T09:00:00.000Z' }], comments: [{ comment: 'ok', author: 'me' }], related: {} });
+    const { projects } = parseVikunja(buildVikunjaZip(user, project()));
+    expect(projects[0]).toMatchObject({ oldId: 1, title: 'TurboKeep', parentOldId: null });
+    expect(projects[0]!.tasks[0]).toMatchObject({ oldId: 10, title: 'Pay rent', description: 'soon\nvery soon\n\nsecond <b> paragraph & more', dueDate: '2030-05-01T09:00:00.000Z', doneAt: null, startDate: null, priority: 0, labels: [{ title: 'money', hexColor: '00ff00' }], reminders: [], comments: [], related: {} });
   });
 
   it('reads Vikunja\'s own shapes: zero dates, nested children, favorites pseudo project, attachments', () => {
@@ -113,33 +111,6 @@ describe('Vikunja', () => {
     expect(() => parseVikunja(zipSync({ 'readme.txt': strToU8('x') }))).toThrow(ImportError);
     expect(() => parseVikunja(strToU8('{"a":1}'))).toThrow(/list of projects/);
     expect(() => parseVikunja(strToU8('[]'))).toThrow(/No projects/);
-  });
-});
-
-describe('relations in the Vikunja export', () => {
-  const user = { id: 1, username: 'me', created: '2024-01-01T00:00:00.000Z' };
-  const mk = (id: number, projectId: number, related: any = {}) => ({ id, projectId, index: 1, title: `T${id}`, description: '', done: false, doneAt: null, dueDate: null, startDate: null, endDate: null, priority: 0, percentDone: 0, hexColor: '', isFavorite: false, position: 0, repeatAfter: 0, repeatMode: 0, created: 'x', updated: 'x', labels: [], reminders: [], related, comments: [] });
-  const proj = (id: number, tasks: any[]) => ({ id, parentId: null, title: `P${id}`, description: '', hexColor: '', isArchived: false, isFavorite: false, position: 0, created: 'x', updated: 'x', tasks });
-  const pair = (kind: string, inv: string, a: any, b: any) => [mk(a.id, a.p, { [kind]: [{ id: b.id, title: `T${b.id}`, projectId: b.p }] }), mk(b.id, b.p, { [inv]: [{ id: a.id, title: `T${a.id}`, projectId: a.p }] })];
-  const read = (z: Uint8Array) => JSON.parse(strFromU8(unzipSync(z)['data.json']!));
-
-  it('writes a same-project pair once, from the later task, so old Vikunja does not duplicate tasks', () => {
-    const [a, b] = pair('subtask', 'parenttask', { id: 1, p: 1 }, { id: 2, p: 1 });
-    const { zip, droppedRelations } = buildVikunjaZip(user, [proj(1, [a, b])]);
-    const tasks = read(zip)[0].tasks;
-    expect(tasks[0].related_tasks).toEqual({});
-    expect(tasks[1].related_tasks.parenttask).toEqual([{ id: 1, title: 'T1', project_id: 1 }]);
-    expect(droppedRelations).toBe(0);
-  });
-  it('leaves relations between projects out by default (and says how many), keeps them on request', () => {
-    const [a, b] = pair('related', 'related', { id: 1, p: 1 }, { id: 2, p: 2 });
-    const projects = [proj(1, [a]), proj(2, [b])];
-    const dflt = buildVikunjaZip(user, projects);
-    expect(read(dflt.zip)[1].tasks[0].related_tasks).toEqual({});
-    expect(dflt.droppedRelations).toBe(1);
-    const all = buildVikunjaZip(user, projects, { crossProject: true });
-    expect(read(all.zip)[1].tasks[0].related_tasks.related[0].id).toBe(1);
-    expect(all.droppedRelations).toBe(0);
   });
 });
 

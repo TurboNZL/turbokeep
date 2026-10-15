@@ -104,69 +104,35 @@ export function parseVikunja(data: Uint8Array): { projects: ProjectIn[]; warning
 }
 
 // ---- export ----
+// TurboKeep has one list and tags, so everything on the list goes out as the tasks of ONE project; tags become labels (with their colour).
+// Reminders, relations, comments, repeats, priority and the start/end dates do not exist here and are written as empty.
 
 export interface VUser { id: number; username: string; created: string }
 export interface VTask {
-  id: number; projectId: number; index: number; title: string; description: string; done: boolean; doneAt: string | null;
-  dueDate: string | null; startDate: string | null; endDate: string | null; priority: number; percentDone: number; hexColor: string;
-  isFavorite: boolean; position: number; repeatAfter: number; repeatMode: number; created: string; updated: string;
-  labels: { id: number; title: string; description: string; hexColor: string; created: string; updated: string }[];
-  reminders: { reminder: string | null; relativePeriod: number; relativeTo: string }[];
-  related: Record<string, { id: number; title: string; projectId: number }[]>;
-  comments: { id: number; comment: string; author: string; created: string; updated: string }[];
+  id: number; index: number; title: string; description: string; done: boolean; doneAt: string | null; dueDate: string | null; percentDone: number;
+  isFavorite: boolean; position: number; created: string; updated: string;
+  labels: { id: number; title: string; hexColor: string; created: string; updated: string }[];
 }
-export interface VProject {
-  id: number; parentId: number | null; title: string; description: string; hexColor: string; isArchived: boolean; isFavorite: boolean;
-  position: number; created: string; updated: string; tasks: VTask[];
-}
+export interface VProject { id: number; title: string; created: string; updated: string; tasks: VTask[] }
 
-export interface BuildOptions {
-  /** Keep relations between tasks of different projects. Older Vikunja (0.24 and before) duplicates the tasks they name, newer versions do not. */
-  crossProject?: boolean;
-}
-
-export function buildVikunjaJson(user: VUser, projects: VProject[], opts: BuildOptions = {}): { data: unknown[]; droppedRelations: number } {
+export function buildVikunjaJson(user: VUser, project: VProject): unknown[] {
   const owner = { id: user.id, name: '', username: user.username, created: user.created, updated: user.created };
   const t = (v: string | null) => v ?? ZERO_TIME;
-  // Older Vikunja (checked with 0.24.6) reads a project's tasks in order and looks a related task up only among the ones it has already created in
-  // that project; anything else named in related_tasks is created as a NEW task, and the real one is created again later, so tasks double.
-  // Vikunja adds the inverse relation itself, so each pair is written once, from the later task to the earlier one, and (unless asked) only inside a project.
-  const order = new Map<number, number>();
-  for (const p of projects) for (const k of p.tasks) order.set(k.id, order.size);
-  const dropped = new Set<string>(); // cross-project pairs left out (each pair is seen from both ends)
-  const keep = (k: VTask) => {
-    const out: Record<string, { id: number; title: string; project_id: number }[]> = {};
-    for (const [kind, list] of Object.entries(k.related)) {
-      for (const r of list) {
-        const first = (order.get(r.id) ?? Infinity) < order.get(k.id)!;
-        const same = r.projectId === k.projectId;
-        if (!same && !opts.crossProject) dropped.add(`${Math.min(k.id, r.id)}:${Math.max(k.id, r.id)}:${kind}`);
-        else if (first) (out[kind] ??= []).push({ id: r.id, title: r.title, project_id: r.projectId });
-      }
-    }
-    return out;
-  };
-  const data = projects.map((p) => ({
-    id: p.id, title: p.title, description: textToHtml(p.description), identifier: '', hex_color: p.hexColor, parent_project_id: p.parentId ?? 0, owner,
-    is_archived: p.isArchived, background_information: null, background_blur_hash: '', background_file_id: 0, is_favorite: p.isFavorite, position: p.position,
-    views: [], buckets: [], task_buckets: [], positions: [], created: p.created, updated: p.updated,
-    tasks: p.tasks.map((k) => ({
-      id: k.id, title: k.title, description: textToHtml(k.description), project_id: k.projectId, done: k.done, done_at: t(k.doneAt),
-      due_date: t(k.dueDate), start_date: t(k.startDate), end_date: t(k.endDate),
-      reminders: k.reminders.length ? k.reminders.map((r) => ({ reminder: t(r.reminder), relative_period: r.relativePeriod, relative_to: r.relativeTo })) : null,
-      repeat_after: k.repeatAfter, repeat_mode: k.repeatMode, priority: k.priority, assignees: null,
-      labels: k.labels.length ? k.labels.map((l) => ({ id: l.id, title: l.title, description: l.description, hex_color: l.hexColor, created_by: owner, created: l.created, updated: l.updated })) : null,
-      hex_color: k.hexColor, percent_done: k.percentDone, identifier: `#${k.index}`, index: k.index,
-      related_tasks: keep(k),
+  return [{
+    id: project.id, title: project.title, description: '', identifier: '', hex_color: '', parent_project_id: 0, owner,
+    is_archived: false, background_information: null, background_blur_hash: '', background_file_id: 0, is_favorite: false, position: 0,
+    views: [], buckets: [], task_buckets: [], positions: [], created: project.created, updated: project.updated,
+    tasks: project.tasks.map((k) => ({
+      id: k.id, title: k.title, description: textToHtml(k.description), project_id: project.id, done: k.done, done_at: t(k.doneAt),
+      due_date: t(k.dueDate), start_date: ZERO_TIME, end_date: ZERO_TIME, reminders: null, repeat_after: 0, repeat_mode: 0, priority: 0, assignees: null,
+      labels: k.labels.length ? k.labels.map((l) => ({ id: l.id, title: l.title, description: '', hex_color: l.hexColor, created_by: owner, created: l.created, updated: l.updated })) : null,
+      hex_color: '', percent_done: k.percentDone, identifier: `#${k.index}`, index: k.index, related_tasks: {},
       attachments: null, cover_image_attachment_id: 0, is_favorite: k.isFavorite, created: k.created, updated: k.updated, bucket_id: 0, position: k.position,
-      reactions: null, created_by: owner,
-      comments: k.comments.map((c) => ({ id: c.id, comment: textToHtml(c.comment), author: { ...owner, username: c.author || owner.username }, reactions: null, created: c.created, updated: c.updated })),
+      reactions: null, created_by: owner, comments: [],
     })),
-  }));
-  return { data, droppedRelations: new Set([...dropped].map((x) => x.split(':').slice(0, 2).join(':'))).size };
+  }];
 }
 
-export function buildVikunjaZip(user: VUser, projects: VProject[], opts: BuildOptions = {}): { zip: Uint8Array; droppedRelations: number } {
-  const { data, droppedRelations } = buildVikunjaJson(user, projects, opts);
-  return { droppedRelations, zip: zipSync({ VERSION: strToU8(EXPORT_VERSION), 'data.json': strToU8(JSON.stringify(data)) }, { level: 6 }) };
+export function buildVikunjaZip(user: VUser, project: VProject): Uint8Array {
+  return zipSync({ VERSION: strToU8(EXPORT_VERSION), 'data.json': strToU8(JSON.stringify(buildVikunjaJson(user, project))) }, { level: 6 });
 }

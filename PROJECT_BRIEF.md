@@ -3,12 +3,11 @@
 The long-lived "why and what". `CLAUDE.md` is the running log; this file changes rarely.
 
 ## Goal and user
-A self-hostable notes and tasks app for one person or a household, that is easy to put behind a **Cloudflare Tunnel**, and that never traps the data: it reads and writes **Standard Notes** (plaintext/decrypted export), **Vikunja** (data export) and its own **TurboKeep** bundle (notes and tasks together) so users can come from either, or leave to either. Built on the TurboNZL engine so it looks and releases like the other apps (themes, release flow, guides).
+A self-hostable to-do and notes app (one kind of thing) for one person or a household, that is easy to put behind a **Cloudflare Tunnel**, and that never traps the data: it reads and writes **Standard Notes** (plaintext/decrypted export), **Vikunja** (data export) and its own **TurboKeep** bundle (notes and tasks together) so users can come from either, or leave to either. Built on the TurboNZL engine so it looks and releases like the other apps (themes, release flow, guides).
 
 ## Feature inventory
 - Accounts (first-run setup code, optional sign-up, API tokens), per-user data.
-- Notes: plain/Markdown, tags, pin/archive/trash, search, autosave with conflict detection. New notes are titled with their date.
-- Tasks: any note can be one (schema v2); lists (nested), priority, dates, reminders (stored), repeats, relations, comments, smart views. Home shows both with a tag rail.
+- Items (schema v4): a title and a description (plain/Markdown), tags (emoji, colour), a due date, progress, pin, archive (= finished), bin, search, autosave with conflict detection, hand-made order (drag, touch too), links between items by pasted link. Everything typed on Home goes on the list; "send to tags" files it instead.
 - Import/export: TurboKeep bundle; Standard Notes zip/JSON/plain files; Vikunja zip. Preview (dry run) before import.
 - Themes, layouts, Keep view, guides inside the app. Native systemd install (`scripts/install-pi.sh`), in-app server update, Android app with a widget attached to every release.
 
@@ -28,8 +27,7 @@ See `docs/development/ARCHITECTURE.md` (Hono + node:sqlite server, React/Vite cl
 | Item | Done when |
 |---|---|
 | Offline editing (service worker + local queue) | a note typed with the server unreachable is saved on reconnect, conflicts still detected |
-| Kanban view and Vikunja buckets/views import | a project can be shown as columns; the export carries `views`/`buckets` that a real Vikunja accepts |
-| Reminders that notify (web push or email) | a reminder fires once, on time, on a phone |
+| Due-date notifications (web push or email) | an item with a date tells you once, on time, on a phone |
 | Attachments | stored on disk, exported in `files/<id>` of the Vikunja zip, imported from it |
 | Standard Notes round trip proven on a live account | export imported in the real app, tags and dates verified |
 | Run against Vikunja 1.x | `relations=all` import checked on a current release |
@@ -37,6 +35,6 @@ See `docs/development/ARCHITECTURE.md` (Hono + node:sqlite server, React/Vite cl
 | Desktop client | then take `updaters` etc. from the engine |
 
 ## Glossary
-- **Inbox:** each user's default project; tasks without a project go there.
-- **Relation kinds:** Vikunja's (subtask, parenttask, related, blocked, ...); the inverse is always stored too.
+- **On the list:** an item with a checkbox, shown on Home. **Finished** = archived. **Send to tags** = off the list, found by its tags.
+- **Position:** the hand-made order (a real number; a drop takes the middle of its neighbours).
 - **Setup code:** printed by the server on first start; needed to create the first account.

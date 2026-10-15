@@ -6,9 +6,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /** The calls the native parts make to the server (the widget, quick add). Blocking: call from a background thread. */
@@ -17,9 +14,6 @@ object KeepApi {
 
     private val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
     private val JSON = "application/json; charset=utf-8".toMediaType()
-
-    /** "Wednesday, 14 Oct 2026 at 20:37": the title a new note gets (the same as the web page's dateTitle) */
-    fun dateTitle(d: Date = Date()): String = SimpleDateFormat("EEEE, d MMM yyyy 'at' HH:mm", Locale.ENGLISH).format(d)
 
     /**
      * Cloudflare Access (when the server is behind it) wants its own cookie, which the web view already holds after you signed in there; the service

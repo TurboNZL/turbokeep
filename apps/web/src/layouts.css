@@ -40,7 +40,8 @@
 @media (min-width: 768px) {
   [data-layout="dock"] .bt-tabbar { margin: 0; overflow-x: auto; }
   [data-layout="dock"] .bt-tabbar .bt-tab { padding-block: 0.5rem; font-size: 11px; min-width: 4.25rem; }
-  [data-layout="dock"] .bt-content { max-width: 80rem; }
+  /* the page uses the whole width, like every other layout (it was capped at 80 rem, which left an empty strip on the right of Home) */
+  [data-layout="dock"] .bt-content { max-width: none; }
 }
 
 /* Liquid Glass floats its bars: with the dock layout the page needs room under it */

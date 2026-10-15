@@ -3,7 +3,7 @@
 ## What to back up
 Everything is in the data folder: `turbokeep.db` (plus `-wal` and `-shm` files while the server runs). Two safe ways:
 
-1. **Export from the app** (Settings > Import & export): the **TurboKeep backup** holds your notes and tasks together and restores into any TurboKeep; the Standard Notes and Vikunja zips are readable by other programs, so they are also your way out. They are per account.
+1. **Export from the app** (Settings > Import & export): the **TurboKeep backup** holds everything and restores into any TurboKeep; the Standard Notes and Vikunja zips are readable by other programs, so they are also your way out. They are per account.
 2. **Copy the database** while the server runs, with SQLite's own backup so the copy is consistent (adjust the data folder):
 ```
 sudo -u turbokeep node --disable-warning=ExperimentalWarning -e "const {DatabaseSync}=require('node:sqlite'); const d=new DatabaseSync('/var/lib/turbokeep/turbokeep.db'); d.exec(\"VACUUM INTO '/var/lib/turbokeep/backup.db'\")"
@@ -21,4 +21,4 @@ It prints each step and stops at the first one that fails: stop the service, `gi
 
 The version you are running is in the first line of `journalctl -u turbokeep` and in Settings > This app; compare it with the latest release on GitHub. Releases are made for every merge to the main branch, named `vYYYY.M.N`; the server updates from `main`.
 
-When a release changes how the database is laid out, the new version converts it when it starts (the 2026.10 notes-and-tasks merge did this: every task got a note). A server never opens a database made by a *newer* version (it stops with a message instead), so **take a backup before updating**; to go back, check out the older tag in the program folder (`git checkout v2026.10.3`, then `pnpm install --frozen-lockfile && pnpm build`) and restore that backup.
+When a release changes how the database is laid out, the new version converts it when it starts (the 2026.10 notes-and-tasks merge did this: every task got a note; the next one, *one kind of thing*, folds tasks into notes: a list becomes a tag, done becomes archived, comments are added to the text, and reminders, repeats, priority, relations and start/end dates are deleted for good, which is why a backup comes first). A server never opens a database made by a *newer* version (it stops with a message instead), so **take a backup before updating**; to go back, check out the older tag in the program folder (`git checkout v2026.10.3`, then `pnpm install --frozen-lockfile && pnpm build`) and restore that backup.

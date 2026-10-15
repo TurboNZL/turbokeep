@@ -1,7 +1,7 @@
 {
   "name": "TurboKeep",
   "emblem": "check",
-  "accent": null,
+  "emblemColor": "#ffb020",
   "out": {
     "svg": "apps/web/public/icon.svg",
     "mono": "apps/web/public/icon-mono.svg",
