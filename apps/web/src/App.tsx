@@ -6,6 +6,7 @@ import { android } from './lib/native.ts';
 import { Layout } from './components/Layout.tsx';
 import { LoginPage } from './pages/Login.tsx';
 import { HomePage } from './pages/Home.tsx';
+import { ShelfPage } from './pages/Shelf.tsx';
 // Settings (the theme catalogue, the guides, import and export) is only fetched when someone opens it: Home loads without it
 const SettingsPage = lazy(() => import('./pages/Settings.tsx').then((m) => ({ default: m.SettingsPage })));
 
@@ -28,10 +29,12 @@ export function App() {
       <Route element={<Layout />}>
         <Route index element={<Navigate to="/home" replace />} />
         <Route path="/home/:id?" element={<HomePage />} />
+        <Route path="/archive" element={<ShelfPage pile="archive" />} />
+        <Route path="/bin" element={<ShelfPage pile="bin" />} />
         <Route path="/notes/:id?" element={<Navigate to="/home" replace />} />
-        <Route path="/tasks" element={<Navigate to="/home?view=tasks" replace />} />
+        <Route path="/tasks" element={<Navigate to="/home" replace />} />
         <Route path="/search" element={<Navigate to="/home" replace />} />
-        <Route path="/settings" element={<Suspense fallback={<p className="p-6 text-sm text-muted">Loading…</p>}><SettingsPage /></Suspense>} />
+        <Route path="/settings" element={<Suspense fallback={null}><SettingsPage /></Suspense>} />
         <Route path="*" element={<Navigate to="/home" replace />} />
       </Route>
     </Routes>

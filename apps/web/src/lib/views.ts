@@ -1,69 +1,84 @@
-import { Archive, Calendar, CalendarClock, CheckSquare, FileText, Flag, House, Star, Trash2, type LucideIcon } from 'lucide-react';
 import type { Note, NoteParams } from './api.ts';
 import type { SortId } from './settings.ts';
 
 /**
- * The ways to look at Home. They are buttons in the side bar, top bar or dock (so one tap changes the view), and each one is just a filter of the
- * same list of notes (a task is a note). The first one, Home (id 'inbox', kept so old links work), is everything that is not archived or in the trash.
+ * What Home shows: the Home list (everything with a checkbox, the default), every live note, the notes without a tag, or one tag (with its sub-tags).
+ * A search looks through everything that is not in the bin. The filter lives in the address, so a reload or a shared link shows the same list.
  */
-export type ViewId = 'inbox' | 'today' | 'tasks' | 'notes' | 'week' | 'overdue' | 'starred' | 'archived' | 'trashed';
-export interface View { id: ViewId; label: string; icon: LucideIcon; /** has its own button in the phone dock (the rest sit under "More") */ dock: boolean; query: NoteParams }
+export type Scope = 'list' | 'all' | 'untagged';
+export interface HomeFilter { scope: Scope; tag?: string; q?: string }
 
-export const VIEWS: View[] = [
-  { id: 'inbox', label: 'Home', icon: House, dock: true, query: {} },
-  { id: 'today', label: 'Today', icon: Calendar, dock: true, query: { due: 'today' } },
-  { id: 'tasks', label: 'Tasks', icon: CheckSquare, dock: true, query: { kind: 'tasks' } },
-  { id: 'notes', label: 'Notes', icon: FileText, dock: true, query: { kind: 'notes' } },
-  { id: 'week', label: 'Next 7 days', icon: CalendarClock, dock: false, query: { due: 'week' } },
-  { id: 'overdue', label: 'Overdue', icon: Flag, dock: false, query: { due: 'overdue' } },
-  { id: 'starred', label: 'Starred', icon: Star, dock: false, query: { favorites: '1' } },
-  { id: 'archived', label: 'Archive', icon: Archive, dock: false, query: { view: 'archived' } },
-  { id: 'trashed', label: 'Trash', icon: Trash2, dock: false, query: { view: 'trashed' } },
+export const SCOPES: { id: Scope; label: string }[] = [
+  { id: 'list', label: 'Tasks' }, { id: 'all', label: 'All notes' }, { id: 'untagged', label: 'No tag' },
 ];
-export const isView = (v: unknown): v is ViewId => VIEWS.some((x) => x.id === v);
+const isScope = (v: unknown): v is Scope => SCOPES.some((s) => s.id === v);
 
-export interface HomeFilter { view: ViewId; tag?: string; project?: string; q?: string; showDone?: boolean }
-
-/** The API parameters for a view plus the rail's tag / project and the search box. */
-export function viewParams(f: HomeFilter): NoteParams {
-  const v = VIEWS.find((x) => x.id === f.view) ?? VIEWS[0]!;
-  const p: NoteParams = { ...v.query, excerpt: '1' }; // the list only needs a preview of each text
-  if (f.tag) p.tag = f.tag;
-  if (f.project) p.project = f.project;
-  if (f.q) p.q = f.q;
-  // finished tasks are hidden unless asked for (the piles that are not "live" show everything)
-  if (!f.showDone && !['archived', 'trashed', 'overdue'].includes(f.view)) p.done = 'false';
-  return p;
+export function filterFromSearch(sp: URLSearchParams): HomeFilter {
+  const s = sp.get('scope');
+  return { scope: isScope(s) ? s : 'list', tag: sp.get('tag') || undefined, q: sp.get('q') || undefined };
 }
 
-/** `/home/<note>?view=...&tag=...` : the open note travels with every link, so changing the view or the tab never closes it. */
-export function homeLink(noteId: string | null | undefined, f: Partial<HomeFilter> & { view?: ViewId } = {}): string {
+/** `/home/<note>?scope=...&tag=...`: the open note travels with every link, so changing the filter or the page never closes it. */
+export function homeLink(noteId: string | null | undefined, f: Partial<HomeFilter> = {}): string {
   const sp = new URLSearchParams();
-  if (f.view && f.view !== 'inbox') sp.set('view', f.view);
+  if (f.scope && f.scope !== 'list' && !f.tag) sp.set('scope', f.scope);
   if (f.tag) sp.set('tag', f.tag);
-  if (f.project) sp.set('project', f.project);
   if (f.q) sp.set('q', f.q);
-  if (f.showDone) sp.set('done', '1');
   const qs = sp.toString();
   return `/home${noteId ? `/${noteId}` : ''}${qs ? `?${qs}` : ''}`;
 }
 
-/** What Home shows, read from the address (the same on every load, so a reload or a shared link shows the same list). */
-export function filterFromSearch(sp: URLSearchParams): HomeFilter {
-  const v = sp.get('view');
-  return { view: isView(v) ? v : 'inbox', tag: sp.get('tag') || undefined, project: sp.get('project') || undefined, q: sp.get('q') || undefined, showDone: sp.get('done') === '1' };
+/** The API parameters for a filter. The list only needs a preview of each text, so excerpts are asked for. */
+export function viewParams(f: HomeFilter): NoteParams {
+  const p: NoteParams = { excerpt: '1' };
+  if (f.q) { p.view = 'kept'; p.q = f.q; if (f.tag) p.tag = f.tag; return p; }
+  if (f.tag) { p.tag = f.tag; return p; }
+  if (f.scope === 'list') p.list = '1';
+  else if (f.scope === 'untagged') p.untagged = '1';
+  return p;
+}
+
+export const hasTag = (n: Note, tag: string) => n.tags.some((t) => t === tag || t.startsWith(`${tag}.`));
+
+/** Does a note belong in the list the filter describes? Used to update the list at once after a change, without asking the server again. */
+export function matchesFilter(n: Note, f: HomeFilter): boolean {
+  if (n.trashed) return false;
+  if (f.q) return true; // the server chose these; keep them while they are being changed
+  if (n.archived) return false;
+  if (f.tag) return hasTag(n, f.tag);
+  if (f.scope === 'list') return n.onList;
+  if (f.scope === 'untagged') return n.tags.length === 0;
+  return true;
 }
 
 export const SORTS: { id: SortId; label: string }[] = [
-  { id: 'auto', label: 'Automatic' }, { id: 'newest', label: 'Newest first' }, { id: 'edited', label: 'Recently edited' }, { id: 'oldest', label: 'Oldest first' }, { id: 'title', label: 'Title A to Z' },
+  { id: 'manual', label: 'My order (drag)' }, { id: 'newest', label: 'Newest first' }, { id: 'edited', label: 'Recently edited' }, { id: 'oldest', label: 'Oldest first' },
+  { id: 'due', label: 'Due date' }, { id: 'title', label: 'Title A to Z' },
 ];
 
-/** Orders a list. Pinned notes stay on top. 'auto' is newest first on the Keep wall and the server's own order (due dates for tasks) otherwise. */
-export function sortNotes(list: Note[], sort: SortId, keep: boolean): Note[] {
-  const how = sort === 'auto' ? (keep ? 'newest' : null) : sort;
-  if (!how) return list;
-  const key = (n: Note) => (how === 'edited' ? n.updatedAt : n.createdAt);
-  const cmp = how === 'title' ? (a: Note, b: Note) => (a.title || a.text).localeCompare(b.title || b.text, undefined, { sensitivity: 'base' })
-    : how === 'oldest' ? (a: Note, b: Note) => key(a).localeCompare(key(b)) : (a: Note, b: Note) => key(b).localeCompare(key(a));
-  return [...list].sort((a, b) => Number(b.pinned) - Number(a.pinned) || cmp(a, b));
+/** The order the server uses for "my order": pinned first, then the hand-made position, then the latest edit. */
+export const compareManual = (a: Note, b: Note) => Number(b.pinned) - Number(a.pinned) || a.position - b.position || b.updatedAt.localeCompare(a.updatedAt);
+
+/** Orders a list. Pinned notes stay on top in every order. */
+export function sortNotes(list: Note[], sort: SortId): Note[] {
+  const by: Record<SortId, (a: Note, b: Note) => number> = {
+    manual: compareManual,
+    newest: (a, b) => b.createdAt.localeCompare(a.createdAt),
+    edited: (a, b) => b.updatedAt.localeCompare(a.updatedAt),
+    oldest: (a, b) => a.createdAt.localeCompare(b.createdAt),
+    title: (a, b) => (a.title || a.text).localeCompare(b.title || b.text, undefined, { sensitivity: 'base' }),
+    due: (a, b) => (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999'),
+  };
+  return [...list].sort((a, b) => Number(b.pinned) - Number(a.pinned) || by[sort](a, b));
+}
+
+/** Dragging only makes sense while the list is in your own order and shows one whole pile (not search results). */
+export const canReorder = (sort: SortId, f: HomeFilter) => sort === 'manual' && !f.q;
+
+/** The position a note dropped between two others gets (the server does the same sum and renumbers when the gap is too small). */
+export function positionBetween(above?: number, below?: number): number | null {
+  if (above !== undefined && below !== undefined) return below - above < 1e-7 ? null : (above + below) / 2;
+  if (above !== undefined) return above + 1;
+  if (below !== undefined) return below - 1;
+  return 0;
 }

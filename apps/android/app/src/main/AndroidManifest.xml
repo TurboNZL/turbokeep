@@ -27,7 +27,7 @@
 
         <activity android:name=".SetupActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
 
-        <!-- add a task or a note without opening the app: from the widget, and as a share target for text -->
+        <!-- add something without opening the app: from the widget, and as a share target for text -->
         <activity
             android:name=".QuickAddActivity"
             android:exported="true"
@@ -42,7 +42,15 @@
             </intent-filter>
         </activity>
 
-        <!-- a tap on a task in the widget: tick it off, or open it -->
+        <!-- what the widget's title opens: text size, spacing, order -->
+        <activity
+            android:name=".WidgetSettingsActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:label="TurboKeep widget"
+            android:theme="@style/Theme.TurboKeep.Dialog" />
+
+        <!-- a tap on an item in the widget: finish it, open it up, save it to memory -->
         <activity
             android:name=".WidgetActionActivity"
             android:exported="false"

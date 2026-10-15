@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">TurboKeep</string>
-    <string name="widget_name">TurboKeep tasks</string>
-    <string name="widget_description">Your open tasks. Tick one off, or add a task or note.</string>
+    <string name="widget_name">TurboKeep list</string>
+    <string name="widget_description">Your list in your own order. Tap an item to open it up, complete it or save it to memory.</string>
 </resources>

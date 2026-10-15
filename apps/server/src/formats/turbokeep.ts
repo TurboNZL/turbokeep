@@ -2,30 +2,25 @@ import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { ImportError } from './types.ts';
 
 /**
- * TurboKeep's own backup: everything in one file, notes and tasks together (a task is a note with task fields), so nothing is lost and it can be
- * moved to another server or account.
- *   turbokeep.json   { format: "turbokeep", version: 1, exportedAt, projects[], notes[] (each with its tag names and its task if it has one), relations[] }
+ * TurboKeep's own backup: everything in one file, so nothing is lost and it can be moved to another server or account.
+ *   turbokeep.json   { format: "turbokeep", version: 2, exportedAt, notes[] (each with its tag names), tagStyles[] }
  * Zipped as turbokeep-<date>.zip; a bare turbokeep.json is read too. A file written by a NEWER version is refused instead of half-read.
  */
 export const FORMAT = 'turbokeep';
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;
 export const FILE = 'turbokeep.json';
 
-export interface TkProject { id: number; title: string; description: string; hexColor: string; parentId: number | null; isArchived: boolean; isFavorite: boolean; isInbox: boolean; position: number }
-export interface TkReminder { reminder: string | null; relativePeriod: number; relativeTo: string }
-export interface TkComment { comment: string; author: string; createdAt: string; updatedAt: string }
-export interface TkTask {
-  projectId: number; done: boolean; doneAt: string | null; dueDate: string | null; startDate: string | null; endDate: string | null; priority: number; percentDone: number;
-  hexColor: string; isFavorite: boolean; position: number; repeatAfter: number; repeatMode: number; createdAt: string; updatedAt: string;
-  reminders: TkReminder[]; comments: TkComment[];
-}
+/**
+ * Version 2 (one kind of thing): every note carries `onList` (has a checkbox on Home), `dueDate`, `percentDone` and `position`; finished means archived.
+ * Version 1 (notes with a task, projects, relations) is still read: a task becomes an item on the list, done becomes archived, its project becomes a
+ * tag, comments are appended to the text, and reminders, relations, repeats, priority and start/end dates are dropped (reported as a warning).
+ */
 export interface TkNote {
   id: string; title: string; text: string; noteType: string; pinned: boolean; archived: boolean; trashed: boolean; tags: string[]; createdAt: string; updatedAt: string;
-  task: TkTask | null;
+  onList: boolean; dueDate: string | null; percentDone: number; position: number;
 }
-export interface TkRelation { noteId: string; otherNoteId: string; kind: string }
 export interface TkTagStyle { title: string; emoji: string; color: string }
-export interface TkBundle { projects: TkProject[]; notes: TkNote[]; relations: TkRelation[]; /** tags that have an emoji or a colour (optional: older backups have none) */ tagStyles: TkTagStyle[] }
+export interface TkBundle { notes: TkNote[]; /** tags that have an emoji or a colour */ tagStyles: TkTagStyle[] }
 
 export function buildTurboKeepZip(bundle: TkBundle, appVersion: string): Uint8Array {
   const json = JSON.stringify({ format: FORMAT, version: FORMAT_VERSION, exportedAt: new Date().toISOString(), appVersion, ...bundle }, null, 1);
@@ -53,33 +48,38 @@ export function parseTurboKeep(data: Uint8Array): { bundle: TkBundle; warnings: 
   if (typeof j.version !== 'number' || j.version > FORMAT_VERSION) throw new ImportError(`This backup was made by a newer TurboKeep (format ${j.version}); update TurboKeep first.`);
   const warnings: string[] = [];
 
-  const projects: TkProject[] = (Array.isArray(j.projects) ? j.projects : []).filter((p: any) => p && Number.isInteger(p.id)).map((p: any): TkProject => ({
-    id: p.id, title: str(p.title, 250) || 'Untitled project', description: str(p.description), hexColor: str(p.hexColor, 6), parentId: Number.isInteger(p.parentId) ? p.parentId : null,
-    isArchived: bool(p.isArchived), isFavorite: bool(p.isFavorite), isInbox: bool(p.isInbox), position: num(p.position),
-  }));
+  // version 1 had lists ("projects"): their names become tags
+  const projects = new Map<number, { title: string; parentId: number | null; isInbox: boolean }>();
+  for (const p of Array.isArray(j.projects) ? j.projects : []) if (p && Number.isInteger(p.id)) projects.set(p.id, { title: str(p.title, 250).replace(/\./g, ' '), parentId: Number.isInteger(p.parentId) ? p.parentId : null, isInbox: bool(p.isInbox) });
+  const projectTag = (id: number): string => { const p = projects.get(id); return !p || p.isInbox ? '' : [p.parentId ? projectTag(p.parentId) : '', p.title].filter(Boolean).join('.'); };
+
   const seen = new Set<string>();
   const notes: TkNote[] = [];
+  let lost = 0;
   for (const n of Array.isArray(j.notes) ? j.notes : []) {
     if (!n || typeof n.id !== 'string' || !UUID.test(n.id) || seen.has(n.id.toLowerCase())) { warnings.push('A note without a valid id (or listed twice) was skipped.'); continue; }
     seen.add(n.id.toLowerCase());
-    const t = n.task && typeof n.task === 'object' ? n.task : null;
-    notes.push({
-      id: n.id.toLowerCase(), title: str(n.title, 1000), text: str(n.text), noteType: str(n.noteType, 40) || 'plain-text', pinned: bool(n.pinned), archived: bool(n.archived), trashed: bool(n.trashed),
-      tags: [...new Set((Array.isArray(n.tags) ? n.tags : []).map((x: unknown) => str(x, 80).trim()).filter(Boolean))] as string[],
+    const tags = [...new Set((Array.isArray(n.tags) ? n.tags : []).map((x: unknown) => str(x, 80).trim()).filter(Boolean))] as string[];
+    const base = {
+      id: n.id.toLowerCase(), title: str(n.title, 1000), text: str(n.text), noteType: str(n.noteType, 40) || 'plain-text', pinned: bool(n.pinned), archived: bool(n.archived), trashed: bool(n.trashed), tags,
       createdAt: date(n.createdAt) ?? new Date().toISOString(), updatedAt: date(n.updatedAt) ?? date(n.createdAt) ?? new Date().toISOString(),
-      task: t && {
-        projectId: Number.isInteger(t.projectId) ? t.projectId : 0, done: bool(t.done), doneAt: date(t.doneAt), dueDate: date(t.dueDate), startDate: date(t.startDate), endDate: date(t.endDate),
-        priority: Math.min(5, Math.max(0, Math.round(num(t.priority)))), percentDone: Math.min(1, Math.max(0, num(t.percentDone))), hexColor: str(t.hexColor, 6), isFavorite: bool(t.isFavorite),
-        position: num(t.position), repeatAfter: Math.max(0, Math.round(num(t.repeatAfter))), repeatMode: [0, 1, 2].includes(t.repeatMode) ? t.repeatMode : 0,
-        createdAt: date(t.createdAt) ?? date(n.createdAt) ?? new Date().toISOString(), updatedAt: date(t.updatedAt) ?? date(n.updatedAt) ?? new Date().toISOString(),
-        reminders: (Array.isArray(t.reminders) ? t.reminders : []).map((r: any): TkReminder => ({ reminder: date(r?.reminder), relativePeriod: Math.round(num(r?.relativePeriod)), relativeTo: str(r?.relativeTo, 20) })).filter((r: TkReminder) => r.reminder || r.relativeTo),
-        comments: (Array.isArray(t.comments) ? t.comments : []).filter((c: any) => c && str(c.comment)).map((c: any): TkComment => ({ comment: str(c.comment), author: str(c.author, 60), createdAt: date(c.createdAt) ?? new Date().toISOString(), updatedAt: date(c.updatedAt) ?? date(c.createdAt) ?? new Date().toISOString() })),
-      },
-    });
+    };
+    const t = n.task && typeof n.task === 'object' ? n.task : null;
+    if (j.version >= 2 || !t) {
+      notes.push({ ...base, onList: bool(n.onList), dueDate: date(n.dueDate), percentDone: Math.min(1, Math.max(0, num(n.percentDone))), position: num(n.position) });
+      continue;
+    }
+    // a version 1 task
+    const pt = Number.isInteger(t.projectId) ? projectTag(t.projectId) : '';
+    if (pt && !tags.includes(pt)) tags.push(pt);
+    const comments = (Array.isArray(t.comments) ? t.comments : []).filter((c: any) => c && str(c.comment));
+    if (comments.length) base.text = `${base.text.trimEnd()}\n\n--- Comments ---\n${comments.map((c: any) => `${str(c.author, 60) ? `${str(c.author, 60)}, ` : ''}${(date(c.createdAt) ?? '').slice(0, 10)}: ${str(c.comment)}`).join('\n')}\n`.trimStart();
+    if ((Array.isArray(t.reminders) && t.reminders.length) || num(t.priority) || num(t.repeatAfter) || t.repeatMode === 1 || t.startDate || t.endDate) lost++;
+    notes.push({ ...base, tags, archived: base.archived || bool(t.done), pinned: base.pinned || bool(t.isFavorite), onList: true, dueDate: date(t.dueDate), percentDone: Math.min(1, Math.max(0, num(t.percentDone))), position: num(t.position) });
   }
-  const relations: TkRelation[] = (Array.isArray(j.relations) ? j.relations : []).filter((r: any) => r && typeof r.noteId === 'string' && typeof r.otherNoteId === 'string' && typeof r.kind === 'string')
-    .map((r: any) => ({ noteId: r.noteId.toLowerCase(), otherNoteId: r.otherNoteId.toLowerCase(), kind: r.kind }));
+  if (Array.isArray(j.relations) && j.relations.length) warnings.push(`${j.relations.length} task relation${j.relations.length === 1 ? '' : 's'} in this backup were left out (TurboKeep no longer has them).`);
+  if (lost) warnings.push(`${lost} task${lost === 1 ? '' : 's'} had reminders, repeats, a priority or start/end dates, which TurboKeep no longer keeps.`);
   const tagStyles: TkTagStyle[] = (Array.isArray(j.tagStyles) ? j.tagStyles : []).filter((t: any) => t && typeof t.title === 'string' && t.title).map((t: any) => ({
     title: String(t.title).slice(0, 200), emoji: typeof t.emoji === 'string' ? [...t.emoji].slice(0, 4).join('') : '', color: /^[0-9a-f]{6}$/i.test(String(t.color ?? '')) ? String(t.color).toLowerCase() : '' }));
-  return { bundle: { projects, notes, relations, tagStyles }, warnings };
+  return { bundle: { notes, tagStyles }, warnings };
 }

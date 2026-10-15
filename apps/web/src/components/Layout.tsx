@@ -1,27 +1,30 @@
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { CheckSquare, FileText, MoreHorizontal, Plus, Search, Settings, type LucideIcon } from 'lucide-react';
+import { Archive, House, Plus, Search, Settings, Trash2, type LucideIcon } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { effectiveUi } from 'turbothemes';
 import { cn } from '../lib/cn.ts';
 import { useStore } from '../lib/store.ts';
-import { VIEWS, homeLink, isView, type ViewId } from '../lib/views.ts';
+import { homeLink } from '../lib/views.ts';
 import { useWide } from '../lib/useWide.ts';
+import type { NavId } from '../lib/settings.ts';
+import { requestCompose } from './Composer.tsx';
+import { Toasts } from './Toasts.tsx';
 
-interface NavItem { key: string; label: string; icon: LucideIcon; to: string; active: boolean; dock: boolean }
+interface NavItem { key: NavId; label: string; icon: LucideIcon; to: string; active: boolean }
 
-/** The navigation: one button per way of looking at Home (Inbox, Today, Tasks…) and Settings. Home links carry the open note, so no tab hides it. */
+/** The pages, in the order chosen in Settings: Home (the list, tags and the open item), the Archive, the Bin and Settings. Home's link carries the open note, so no tab hides it. */
 function useNavItems(): NavItem[] {
   const { pathname } = useLocation();
-  const [sp] = useSearchParams();
   const openNote = useStore((s) => s.openNote);
+  const order = useStore((s) => s.settings.navOrder);
   const wide = useWide();
-  const onHome = pathname.startsWith('/home');
-  const cur: ViewId = isView(sp.get('view')) ? (sp.get('view') as ViewId) : 'inbox';
-  return [
-    ...VIEWS.map((v) => ({ key: v.id, label: v.label, icon: v.icon, to: homeLink(wide ? openNote : null, { view: v.id }), active: onHome && cur === v.id, dock: v.dock })),
-    { key: 'settings', label: 'Settings', icon: Settings, to: '/settings', active: pathname.startsWith('/settings'), dock: true },
-  ];
+  const all: Record<NavId, NavItem> = {
+    home: { key: 'home', label: 'Home', icon: House, to: homeLink(wide ? openNote : null), active: pathname.startsWith('/home') },
+    archive: { key: 'archive', label: 'Archive', icon: Archive, to: '/archive', active: pathname.startsWith('/archive') },
+    bin: { key: 'bin', label: 'Bin', icon: Trash2, to: '/bin', active: pathname.startsWith('/bin') },
+    settings: { key: 'settings', label: 'Settings', icon: Settings, to: '/settings', active: pathname.startsWith('/settings') },
+  };
+  return order.map((k) => all[k]);
 }
 const linkProps = (i: NavItem) => ({ 'aria-current': i.active ? ('page' as const) : undefined });
 
@@ -65,66 +68,14 @@ function CandyDefs() {
   );
 }
 
-/**
- * The dock's "More" button and its menu. The menu is drawn on the page itself (a portal, fixed position) instead of inside the dock: some UI styles
- * give the dock its own clipping or stacking rules, which swallowed a menu that was a child of it.
- */
-function MoreMenu({ items }: { items: NavItem[] }) {
-  const [open, setOpen] = useState(false);
-  const btn = useRef<HTMLButtonElement>(null);
-  const [bottom, setBottom] = useState(64);
-  useEffect(() => {
-    if (!open) return;
-    const r = btn.current?.closest('.bt-tabbar')?.getBoundingClientRect();
-    if (r) setBottom(window.innerHeight - r.top + 8);
-    const h = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [open]);
-  return (
-    <div className="relative flex flex-1">
-      <button ref={btn} type="button" className="bt-tab flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px]" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><MoreHorizontal size={20} />More</button>
-      {open && createPortal(<>
-        <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
-        <div role="menu" style={{ bottom }} className="bt-menu fixed right-3 z-[61] w-52 overflow-hidden py-1">
-          {items.map((i) => <Link key={i.key} role="menuitem" to={i.to} onClick={() => setOpen(false)} {...linkProps(i)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm"><i.icon size={16} />{i.label}</Link>)}
-        </div></>, document.body)}
-    </div>
-  );
-}
-
-/** One place to add anything, reachable on every page and on a phone. */
-function AddMenu() {
-  const [open, setOpen] = useState(false);
-  const nav = useNavigate();
-  useEffect(() => {
-    if (!open) return;
-    const h = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [open]);
-  const go = (to: string) => { setOpen(false); nav(to); };
-  return (
-    <div className="relative">
-      <button type="button" className="btn btn-accent bt-add" aria-label="Add" title="Add" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><Plus size={16} /><span className="hidden sm:inline">Add</span></button>
-      {open && <>
-        <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-        <div role="menu" className="bt-menu absolute right-0 z-30 mt-2 w-48 origin-top-right overflow-hidden py-1">
-          <button role="menuitem" className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm" onClick={() => go('/home?new=1')}><FileText size={16} />New note</button>
-          <button role="menuitem" className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm" onClick={() => go('/home?newtask=1')}><CheckSquare size={16} />New task</button>
-        </div></>}
-    </div>
-  );
-}
-
 export function Layout() {
   const nav = useNavigate();
   const { pathname } = useLocation();
   const items = useNavItems();
   const [sp] = useSearchParams();
   const activeKey = items.find((i) => i.active)?.key ?? '';
-  const sideRef = useIndicator<HTMLElement>(activeKey);
-  const tabRef = useIndicator<HTMLElement>(activeKey);
+  const sideRef = useIndicator<HTMLElement>(activeKey + items.map((i) => i.key).join());
+  const tabRef = useIndicator<HTMLElement>(activeKey + items.map((i) => i.key).join());
   const [q, setQ] = useState(sp.get('q') ?? '');
   const openNote = useStore((s) => s.openNote);
   const wide = useWide();
@@ -135,7 +86,32 @@ export function Layout() {
   const noSide = topbar || dock; // these layouts have no side bar at all
   const logo = '/icon.svg';
   const mainRef = useRef<HTMLElement>(null);
-  useLayoutEffect(() => { if (mainRef.current) mainRef.current.scrollTop = 0; }, [pathname.split('/')[1]]);
+  const section = pathname.split('/')[1] ?? '';
+  useLayoutEffect(() => { if (mainRef.current) mainRef.current.scrollTop = 0; }, [section]);
+
+  // a page slides in from the side it sits on in the navigation (right when it is further along, left when it is before)
+  const idx = Math.max(0, items.findIndex((i) => i.active));
+  const last = useRef({ idx, dir: '' });
+  if (last.current.idx !== idx) last.current = { idx, dir: idx > last.current.idx ? 'tk-page-fwd' : 'tk-page-back' };
+
+  // Settings is its own file: fetch it while Home is idle, so the first visit does not show a "Loading" flash between the pages
+  useEffect(() => { const t = window.setTimeout(() => void import('../pages/Settings.tsx'), 300); return () => window.clearTimeout(t); }, []);
+
+  // how tall the bar at the bottom is (0 when there is none): menus, toasts and the tag column stop above it
+  useLayoutEffect(() => {
+    const el = tabRef.current;
+    if (!el) return;
+    const set = () => document.documentElement.style.setProperty('--dock-h', getComputedStyle(el).display === 'none' ? '0px' : `${el.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set); ro.observe(el); window.addEventListener('resize', set);
+    return () => { ro.disconnect(); window.removeEventListener('resize', set); };
+  }, [layout, tabRef]);
+
+  const add = () => {
+    requestCompose();
+    if (!pathname.startsWith('/home')) nav(homeLink(wide ? openNote : null));
+    else if (!wide && sp.get('q') !== null) nav('/home');
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -152,30 +128,29 @@ export function Layout() {
           ))}
         </aside>}
         <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-          <form className="bt-top bt-shell sticky top-0 z-10 p-3 backdrop-blur" role="search" onSubmit={(e) => { e.preventDefault(); nav(homeLink(wide ? openNote : null, { view: isView(sp.get('view')) ? (sp.get('view') as ViewId) : 'inbox', tag: sp.get('tag') ?? undefined, project: sp.get('project') ?? undefined, q: q.trim() || undefined })); }}>
+          <form className="bt-top bt-shell sticky top-0 z-10 p-3 backdrop-blur" role="search" onSubmit={(e) => { e.preventDefault(); nav(homeLink(wide ? openNote : null, { q: q.trim() || undefined })); }}>
             <div className="bt-topin relative flex items-center gap-3">
               <div className={cn('flex shrink-0 items-center gap-2 font-bold', !noSide && 'md:hidden')}><img src={logo} alt="TurboKeep" width={28} height={28} className="h-7 w-7 shrink-0" draggable={false} />{topbar && <span className="hidden md:inline">TurboKeep</span>}</div>
               {topbar && <nav className="bt-toplinks hidden min-w-0 items-center gap-6 overflow-x-auto md:flex" aria-label="Pages">
                 {items.map((i) => <Link key={i.key} to={i.to} {...linkProps(i)} className="bt-toplink whitespace-nowrap">{i.label}</Link>)}
               </nav>}
-              <div className="bt-search relative flex-1">
+              <div className="bt-search relative min-w-0 flex-1">
                 <Search size={16} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-muted" />
-                <input className="input pl-9" type="search" aria-label="Search notes and tasks" placeholder="Search notes and tasks" value={q} onChange={(e) => setQ(e.target.value)} />
+                <input className="input pl-9" type="search" aria-label="Search everything" placeholder="Search everything" value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
-              <AddMenu />
+              <button type="button" className="btn btn-accent bt-add shrink-0" aria-label="New" title="Add something (focuses the box at the top of Home)" onClick={add}><Plus size={16} /><span className="hidden sm:inline">New</span></button>
             </div>
           </form>
-          <div className="bt-content p-4 md:p-6"><div key={pathname.split('/')[1]} className="bt-page"><Outlet /></div></div>
+          <div className="bt-content p-4 md:p-6"><div key={section} className={cn('tk-page', last.current.dir)}><Outlet /></div></div>
         </main>
       </div>
-      <nav ref={tabRef} className={cn('bt-tabbar bt-shell relative flex', !dock && 'md:hidden')}>
+      <nav ref={tabRef} className={cn('bt-tabbar bt-shell relative flex', !dock && 'md:hidden')} aria-label="Pages">
         <span className="bt-ind" aria-hidden />
-        {items.filter((i) => i.dock).map((i) => (
+        {items.map((i) => (
           <Link key={i.key} to={i.to} {...linkProps(i)} className="bt-tab flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px]"><i.icon size={20} />{i.label}</Link>
         ))}
-        <MoreMenu items={items.filter((i) => !i.dock)} />
       </nav>
+      <Toasts />
     </div>
   );
 }
-

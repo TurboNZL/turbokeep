@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { api, type TagInfo } from '../lib/api.ts';
 import { Dialog } from './Dialog.tsx';
+import { EmojiPicker } from './EmojiPicker.tsx';
 import { cn } from '../lib/cn.ts';
 
-const EMOJI = ['⭐', '🏠', '💼', '🛒', '📚', '💡', '🎯', '📅', '✅', '❤️', '🔥', '🎵', '✈️', '💰', '🍳', '🧠', '🛠️', '🌱', '🎮', '📌'];
-const COLORS = ['e10600', 'ff8800', 'f2b705', '2fb344', '12b5a5', '2f80ed', '7c5cff', 'd63fa6', '8a8f98'];
+const COLORS = ['e10600', 'ff6a00', 'ffb020', 'f2dc3d', '7ac943', '2fb344', '12b5a5', '2fb8e8', '2f80ed', '5b5bf0', '8b5cf6', 'd63fa6', 'f43f5e', '8a8f98'];
 
-/** Name, emoji and colour of one tag. Renaming a tag to the name of another merges them (the server does that). */
+/** Name, emoji and colour of one tag. The colour is what colours every note carrying the tag, so it should be easy to see. Renaming onto another tag merges them. */
 export function TagDialog({ tag, onClose, onDone }: { tag: TagInfo; onClose: () => void; onDone: () => void }) {
   const [name, setName] = useState(tag.title);
   const [emoji, setEmoji] = useState(tag.emoji);
   const [color, setColor] = useState(tag.color);
+  const [picking, setPicking] = useState(false);
   const [error, setError] = useState('');
   async function save(e: React.FormEvent) {
     e.preventDefault(); setError('');
@@ -24,17 +25,17 @@ export function TagDialog({ tag, onClose, onDone }: { tag: TagInfo; onClose: () 
   return (
     <Dialog title={`Tag: ${tag.title}`} onClose={onClose}>
       <form onSubmit={save} className="space-y-4">
-        <label className="block space-y-1 text-sm">Name<input className="input" value={name} onChange={(e) => setName(e.target.value)} required autoFocus /><span className="text-xs text-muted">A dot makes a sub-tag: <code>work.reports</code> sits under <code>work</code>.</span></label>
-        <div className="space-y-1.5 text-sm">
-          <span>Emoji</span>
-          <div className="flex items-center gap-2"><input className="input !w-20 text-center text-lg" aria-label="Emoji" value={emoji} onChange={(e) => setEmoji([...e.target.value].slice(-2).join(''))} placeholder="🙂" />{emoji && <button type="button" className="btn btn-ghost text-xs" onClick={() => setEmoji('')}>None</button>}</div>
-          <div className="flex flex-wrap gap-1">{EMOJI.map((x) => <button key={x} type="button" className={cn('h-8 w-8 rounded-theme text-lg hover:bg-raised', emoji === x && 'bg-raised ring-1 ring-accent')} onClick={() => setEmoji(x)} aria-label={`Use ${x}`}>{x}</button>)}</div>
+        <div className="flex items-center gap-3">
+          <button type="button" className="btn !h-14 !w-14 shrink-0 !p-0 text-3xl" aria-expanded={picking} aria-label={emoji ? `Emoji ${emoji}: change` : 'Choose an emoji'} onClick={() => setPicking((p) => !p)}>{emoji || '🙂'}</button>
+          <label className="block min-w-0 flex-1 space-y-1 text-sm">Name<input className="input" value={name} onChange={(e) => setName(e.target.value)} required autoFocus /></label>
         </div>
+        <p className="-mt-2 text-xs text-muted">A dot makes a sub-tag: <code>work.reports</code> sits under <code>work</code>.</p>
+        {picking && <div className="rounded-theme border border-line p-2"><EmojiPicker value={emoji} onPick={(u) => { setEmoji(u); setPicking(false); }} />{emoji && <button type="button" className="btn btn-ghost mt-2 text-xs" onClick={() => { setEmoji(''); setPicking(false); }}>No emoji</button>}</div>}
         <div className="space-y-1.5 text-sm">
-          <span>Colour</span>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {COLORS.map((c) => <button key={c} type="button" aria-label={`Colour #${c}`} aria-pressed={color === c} onClick={() => setColor(c)} className={cn('h-7 w-7 rounded-full border border-line', color === c && 'ring-2 ring-accent ring-offset-2 ring-offset-transparent')} style={{ backgroundColor: `#${c}` }} />)}
-            <input type="color" aria-label="Other colour" value={`#${color || '808080'}`} onChange={(e) => setColor(e.target.value.slice(1))} className="h-7 w-10 cursor-pointer rounded border border-line bg-transparent" />
+          <span>Colour <span className="text-muted">(tints every note with this tag)</span></span>
+          <div className="flex flex-wrap items-center gap-2">
+            {COLORS.map((c) => <button key={c} type="button" aria-label={`Colour #${c}`} aria-pressed={color === c} onClick={() => setColor(c)} className={cn('h-9 w-9 rounded-full border border-line', color === c && 'ring-2 ring-accent ring-offset-2 ring-offset-transparent')} style={{ backgroundColor: `#${c}` }} />)}
+            <input type="color" aria-label="Other colour" value={`#${color || '808080'}`} onChange={(e) => setColor(e.target.value.slice(1))} className="h-9 w-12 cursor-pointer rounded border border-line bg-transparent" />
             {color && <button type="button" className="btn btn-ghost text-xs" onClick={() => setColor('')}>No colour</button>}
           </div>
         </div>

@@ -1,12 +1,14 @@
-import { useRef, useState } from 'react';
-import { Download, Upload } from 'lucide-react';
+import { useRef, useState, type ReactNode } from 'react';
+import { ChevronRight, Download, Upload } from 'lucide-react';
 import { api, download, type Report } from '../lib/api.ts';
 import { useStore } from '../lib/store.ts';
 import { Section } from './Section.tsx';
+import { Dialog } from './Dialog.tsx';
 
-const LABEL: Record<string, string> = { notes: 'notes', skipped: 'already here (skipped)', tags: 'new tags', projects: 'projects', tasks: 'tasks', comments: 'comments', relations: 'task relations' };
+const LABEL: Record<string, string> = { notes: 'items', skipped: 'already here (skipped)', tags: 'new tags' };
+type Kind = 'turbokeep' | 'standardnotes' | 'vikunja';
 
-function ImportBox({ kind, accept, multiple, hint }: { kind: 'turbokeep' | 'standardnotes' | 'vikunja'; accept: string; multiple: boolean; hint: string }) {
+function ImportBox({ kind, accept, multiple, hint }: { kind: Kind; accept: string; multiple: boolean; hint: string }) {
   const input = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [report, setReport] = useState<Report | null>(null);
@@ -38,42 +40,68 @@ function ImportBox({ kind, accept, multiple, hint }: { kind: 'turbokeep' | 'stan
   );
 }
 
-export function ImportExport() {
-  const [crossProject, setCrossProject] = useState(false);
+/** An export button with the message that may come back from it. */
+function ExportButtons({ items }: { items: { label: string; path: string; name: string; note?: (r: { notExported: number }) => string | null }[] }) {
   const [msg, setMsg] = useState<string | null>(null);
-  const run = async (path: string, name: string) => {
+  const run = async (i: (typeof items)[number]) => {
     setMsg(null);
-    try { const { dropped } = await download(path, name); if (dropped) setMsg(`${dropped} relation${dropped === 1 ? '' : 's'} between different projects ${dropped === 1 ? 'was' : 'were'} left out of the Vikunja file. Tick the box above to keep them (newer Vikunja only).`); }
-    catch (e) { setMsg((e as Error).message); }
+    try { const r = await download(i.path, i.name); setMsg(i.note?.(r) ?? null); } catch (e) { setMsg((e as Error).message); }
   };
   return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">{items.map((i) => <button key={i.path} className="btn" onClick={() => void run(i)}><Download size={15} />{i.label}</button>)}</div>
+      {msg && <p className="rounded-theme bg-raised p-2.5 text-sm" role="status">{msg}</p>}
+    </div>
+  );
+}
+
+/** One platform's whole story: what it can export, and what it can import. */
+const PLATFORMS: Record<Exclude<Kind, 'turbokeep'>, { title: string; blurb: string; body: ReactNode }> = {
+  standardnotes: {
+    title: 'Standard Notes', blurb: 'Notes: the decrypted backup zip, or plain text files.',
+    body: (
+      <>
+        <div className="space-y-2"><h3 className="text-sm font-semibold">Export</h3>
+          <p className="text-xs text-muted">The same zip Standard Notes writes for a decrypted backup: a JSON backup with tags, pins and dates that Standard Notes can import, plus every note as a <code>.txt</code> file in <code>Items/Note/</code>. Everything goes, finished items and the bin included; Standard Notes has no list, so the checkbox, date and progress stay behind.</p>
+          <ExportButtons items={[{ label: 'Standard Notes backup (.zip)', path: '/api/export/standardnotes', name: 'standard-notes.zip' }, { label: 'Plain text files only (.zip)', path: '/api/export/standardnotes?plain=1', name: 'notes-plaintext.zip' }]} /></div>
+        <div className="space-y-2 border-t border-line pt-4"><h3 className="text-sm font-semibold">Import</h3>
+          <ImportBox kind="standardnotes" multiple accept=".zip,.txt,.md,.markdown,.json" hint="Use the decrypted zip (Standard Notes: Account > Data Backups > Download backup > Decrypted), its JSON file, or plain .txt / .md files. Importing the same backup twice does not duplicate anything. Imported notes are filed under their tags and are not on your task list." /></div>
+      </>),
+  },
+  vikunja: {
+    title: 'Vikunja', blurb: 'Tasks: Vikunja\'s data export zip.',
+    body: (
+      <>
+        <div className="space-y-2"><h3 className="text-sm font-semibold">Export</h3>
+          <p className="text-xs text-muted">Vikunja's own data export format (<code>VERSION</code> + <code>data.json</code>). In Vikunja: Settings &gt; Import from other services &gt; Vikunja file. Everything on your task list becomes a task of one project, finished ones as done, tags as coloured labels. Notes that are not on the list are left out (Vikunja has only tasks).</p>
+          <ExportButtons items={[{ label: 'Vikunja export (.zip)', path: '/api/export/vikunja', name: 'vikunja.zip', note: (r) => (r.notExported ? `${r.notExported} note${r.notExported === 1 ? ' is' : 's are'} not on your task list and ${r.notExported === 1 ? 'was' : 'were'} left out.` : null) }]} /></div>
+        <div className="space-y-2 border-t border-line pt-4"><h3 className="text-sm font-semibold">Import</h3>
+          <ImportBox kind="vikunja" multiple={false} accept=".zip,.json" hint="Vikunja: Settings > Export your data, then pick the zip it gives you (or its data.json). Each task goes onto your task list; its project and labels become tags, done tasks are finished, due date and progress are kept, comments are added to the text. Reminders, repeats, priority, start and end dates, related tasks and attachments are not kept." /></div>
+      </>),
+  },
+};
+
+export function ImportExport() {
+  const [open, setOpen] = useState<null | 'standardnotes' | 'vikunja'>(null);
+  return (
     <>
-      <Section title="Export">
-        <p className="text-sm text-muted">Your data is yours: nothing here is locked in. Exports contain everything in your account, including the trash and archive.</p>
-        <div className="space-y-3">
-          <div className="space-y-1.5"><h3 className="text-sm font-semibold">Everything: TurboKeep</h3>
-            <p className="text-xs text-muted">One zip with your notes and tasks together (tags, lists, reminders, repeats, relations, comments, pins, archive and trash). The way to move to another TurboKeep server or keep a backup you can read.</p>
-            <button className="btn" onClick={() => void run('/api/export/turbokeep', 'turbokeep.zip')}><Download size={15} />TurboKeep backup (.zip)</button></div>
-          <div className="space-y-1.5"><h3 className="text-sm font-semibold">Notes: Standard Notes</h3>
-            <p className="text-xs text-muted">The same zip Standard Notes writes for a decrypted backup: a JSON backup with tags, pins and dates that Standard Notes can import, plus every note as a <code>.txt</code> file in <code>Items/Note/</code>.</p>
-            <div className="flex flex-wrap gap-2"><button className="btn" onClick={() => void run('/api/export/standardnotes', 'standard-notes.zip')}><Download size={15} />Standard Notes backup (.zip)</button>
-              <button className="btn" onClick={() => void run('/api/export/standardnotes?plain=1', 'notes-plaintext.zip')}><Download size={15} />Plain text files only (.zip)</button></div></div>
-          <div className="space-y-1.5"><h3 className="text-sm font-semibold">Tasks: Vikunja</h3>
-            <p className="text-xs text-muted">Vikunja's own data export format (<code>VERSION</code> + <code>data.json</code>). In Vikunja: Settings &gt; Import from other services &gt; Vikunja file. Attachments are not part of it. Descriptions become simple HTML paragraphs.</p>
-            <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={crossProject} onChange={(e) => setCrossProject(e.target.checked)} /><span>Keep relations between tasks in different projects <span className="text-muted">(Vikunja 0.24 and older duplicates the tasks they name; newer versions do not. Off is safe everywhere.)</span></span></label>
-            <button className="btn" onClick={() => void run(`/api/export/vikunja${crossProject ? '?relations=all' : ''}`, 'vikunja.zip')}><Download size={15} />Vikunja export (.zip)</button></div>
-          {msg && <p className="rounded-theme bg-raised p-2.5 text-sm" role="status">{msg}</p>}
+      <Section title="TurboKeep">
+        <p className="text-sm text-muted">Your data is yours: nothing here is locked in. This is the backup that keeps everything (items, tags with their emoji and colour, the list, dates, progress, your order, pins, the archive and the bin), for moving to another TurboKeep server or keeping a copy you can read.</p>
+        <div className="space-y-2"><h3 className="text-sm font-semibold">Export</h3>
+          <ExportButtons items={[{ label: 'TurboKeep backup (.zip)', path: '/api/export/turbokeep', name: 'turbokeep.zip' }]} /></div>
+        <div className="space-y-2 border-t border-line pt-4"><h3 className="text-sm font-semibold">Import</h3>
+          <ImportBox kind="turbokeep" multiple={false} accept=".zip,.json" hint="A zip made by TurboKeep's export (or its turbokeep.json; older backups with tasks, lists and comments are read too). Items that are already here (same id) are skipped, so importing twice is safe." /></div>
+      </Section>
+      <Section title="Other apps">
+        <p className="text-sm text-muted">One window per app, with its import and its export together.</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {(Object.keys(PLATFORMS) as (keyof typeof PLATFORMS)[]).map((k) => (
+            <button key={k} className="card flex min-h-16 items-center gap-3 p-4 text-left hover:border-accent" onClick={() => setOpen(k)}>
+              <span className="min-w-0 flex-1"><span className="block font-semibold">{PLATFORMS[k].title}</span><span className="block text-xs text-muted">{PLATFORMS[k].blurb}</span></span><ChevronRight size={18} className="shrink-0 text-muted" />
+            </button>))}
         </div>
       </Section>
-      <Section title="Import: TurboKeep">
-        <ImportBox kind="turbokeep" multiple={false} accept=".zip,.json" hint="A zip made by TurboKeep's export (or its turbokeep.json). Notes that are already here (same id) are skipped, so importing twice is safe." />
-      </Section>
-      <Section title="Import notes: Standard Notes">
-        <ImportBox kind="standardnotes" multiple accept=".zip,.txt,.md,.markdown,.json" hint="Use the decrypted zip (Standard Notes: Account > Data Backups > Download backup > Decrypted), its JSON file, or plain .txt / .md files. Importing the same backup twice does not duplicate anything." />
-      </Section>
-      <Section title="Import tasks: Vikunja">
-        <ImportBox kind="vikunja" multiple={false} accept=".zip,.json" hint="Vikunja: Settings > Export your data, then pick the zip it gives you (or its data.json). Lists, subprojects, tasks (each becomes a note), labels (they become tags), reminders, repeats, relations and comments come across; attachments, assignees, kanban buckets and saved filters do not." />
-      </Section>
+      {open && <Dialog title={PLATFORMS[open].title} wide onClose={() => setOpen(null)}>{PLATFORMS[open].body}</Dialog>}
     </>
   );
 }

@@ -1,7 +1,7 @@
 {
   "engine": {
     "repo": "TurboNZL/turboengine",
-    "ref": "fca550787381f0f1c04cdeb7372f8097bef5f5b0"
+    "ref": "82152f5"
   },
   "modules": [
     "release-pipeline",
@@ -11,9 +11,10 @@
     "logos",
     "server-install-update",
     "updaters",
-    "android-shell"
+    "android-shell",
+    "device-pairing"
   ],
   "themes": "on",
   "moved": {},
-  "notes": "Server: the engine's 'self-hosted-server' way (native systemd service via scripts/install-pi.sh, scripts/update.sh, owner-only Update server button); Docker was used first and removed. Deliberate differences: (1) the server is built (esbuild bundle apps/server/dist/server.mjs), so update.sh runs `pnpm build`, and the installer clones with tags (the version shown comes from `git describe`); (2) the first account is the owner (lowest user id, no is_admin column) and needs a setup code the installer sets; (3) NO cloudflare-access Settings fields in the web page: the web page is same-origin so the browser's Access cookie covers it; the Android app takes an optional service token on its own address screen, used only by the widget; (4) NO device-pairing code: the Android app shows the server's page in a WebView and the page hands a token to the widget through the bridge; (5) Android shell differs from the engine's android-shell: it loads the SERVER's page instead of a bundled copy at http://localhost (no version skew, no CORS), applicationId app.turbokeep.android, widget + quick add + share target instead of media playback, OkHttp for native calls. Standard Notes, Vikunja and TurboKeep bundle import/export live in apps/server/src/formats and io.ts. A task is a note with a task attached (schema v2)."
+  "notes": "Server: the engine's 'self-hosted-server' way (native systemd service via scripts/install-pi.sh, scripts/update.sh, owner-only Update server button); Docker was used first and removed. Deliberate differences: (1) the server is built (esbuild bundle apps/server/dist/server.mjs), so update.sh runs `pnpm build`, and the installer clones with tags (the version shown comes from `git describe`); (2) the first account is the owner (lowest user id, no is_admin column) and needs a setup code the installer sets; (3) NO cloudflare-access Settings fields in the web page: the web page is same-origin so the browser's Access cookie covers it; the Android app takes an optional service token on its own address screen, used only by the widget; (4) device-pairing is taken for the Android setup screen (a KEEP1- code carries address, a token of its own and the Cloudflare Access service token); the signed-in web page still hands the widget a token through the bridge by itself; (5) Android shell differs from the engine's android-shell: it loads the SERVER's page instead of a bundled copy at http://localhost (no version skew, no CORS), applicationId app.turbokeep.android, widget + quick add + share target instead of media playback, OkHttp for native calls. Standard Notes, Vikunja and TurboKeep bundle import/export live in apps/server/src/formats and io.ts. Everything is one kind of thing, a note (schema v4): on the list (a checkbox) or filed under tags."
 }

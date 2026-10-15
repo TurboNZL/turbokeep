@@ -31,6 +31,25 @@ class ServerPrefs(context: Context) {
         get() = p.getLong("lastUpdateCheck", 0L)
         set(v) { p.edit().putLong("lastUpdateCheck", v).apply() }
 
+    /** the widget's look: text size (1 = normal), the space between items in dp, and the order ("manual" = the same order as in the app) */
+    var widgetZoom: Float
+        get() = p.getFloat("widgetZoom", 1f)
+        set(v) { p.edit().putFloat("widgetZoom", v.coerceIn(0.8f, 1.8f)).apply() }
+    var widgetSpacing: Int
+        get() = p.getInt("widgetSpacing", 4)
+        set(v) { p.edit().putInt("widgetSpacing", v.coerceIn(0, 20)).apply() }
+    var widgetSort: String
+        get() = p.getString("widgetSort", "manual") ?: "manual"
+        set(v) { p.edit().putString("widgetSort", v).apply() }
+    /** the item the widget has opened up a little (its description and the two big buttons are showing); blank when none */
+    var widgetOpen: String
+        get() = p.getString("widgetOpen", "") ?: ""
+        set(v) { p.edit().putString("widgetOpen", v).apply() }
+    /** the last list the server sent, so the widget draws at once (and while offline) and a refresh only has to replace it */
+    var widgetCache: String
+        get() = p.getString("widgetCache", "[]") ?: "[]"
+        set(v) { p.edit().putString("widgetCache", v).apply() }
+
     val configured get() = serverUrl.isNotEmpty()
     val signedIn get() = configured && token.isNotEmpty()
 }

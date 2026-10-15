@@ -39,7 +39,8 @@ export function Select({ value, onChange, options, placeholder = 'Choose…', cl
     if (!mounted || !btn.current) return;
     const place = () => {
       const r = btn.current!.getBoundingClientRect();
-      const below = window.innerHeight - r.bottom - 12, above = r.top - 12;
+      const dock = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dock-h')) || 0; // the bar at the bottom covers the last part of the window
+      const below = window.innerHeight - dock - r.bottom - 12, above = r.top - 12;
       const up = below < 200 && above > below;
       const maxHeight = Math.max(140, Math.min(320, up ? above : below));
       const width = Math.max(r.width, 176);

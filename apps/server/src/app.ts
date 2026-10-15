@@ -116,25 +116,23 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
   });
   app.delete('/api/tokens/:id', (c) => { run(db, "delete from sessions where user_id = ? and kind = 'api' and substr(token_hash,1,16) = ?", c.get('user').id, c.req.param('id')); return c.json({ ok: true }); });
 
-  // ---- notes (a note can carry a task) ----
+  // ---- notes (one kind of thing: on the Home list or filed under tags) ----
   const uid = (c: any) => (c.get('user') as AuthUser).id;
   const body = async (c: any) => (await c.req.json().catch(() => { throw new S.HttpError(400, 'Invalid JSON'); })) ?? {};
   const bool3 = (v: string | undefined) => (v === undefined || v === '' ? undefined : v === 'true' || v === '1');
   app.get('/api/notes', (c) => {
     const q = c.req.query();
-    const list = S.listNotes(db, uid(c), { view: (q.view as any) || 'notes', kind: (q.kind as any) || 'all', tag: q.tag || undefined, q: q.q || undefined, done: bool3(q.done), due: q.due as any, favorites: q.favorites === '1', projectId: int(q.project) });
+    const list = S.listNotes(db, uid(c), { view: (q.view as any) || 'notes', list: bool3(q.list), tag: q.tag || undefined, untagged: q.untagged === '1', q: q.q || undefined, due: q.due as any });
     // the list only needs a preview of each text (the open note is fetched whole): `excerpt=1` keeps the answer small on a big library
     return c.json(q.excerpt === '1' ? list.map((n) => (n.text.length > 400 ? { ...n, text: n.text.slice(0, 400) } : n)) : list);
   });
   app.post('/api/notes', async (c) => c.json(S.createNote(db, uid(c), await body(c)), 201));
   app.post('/api/notes/empty-trash', (c) => c.json({ deleted: S.emptyTrash(db, uid(c)) }));
-  app.get('/api/notes/:id', (c) => c.json(S.getNoteDetail(db, uid(c), c.req.param('id'))));
+  app.get('/api/notes/:id', (c) => c.json(S.getNote(db, uid(c), c.req.param('id'))));
   app.patch('/api/notes/:id', async (c) => { const b = await body(c); return c.json(S.updateNote(db, uid(c), c.req.param('id'), b, typeof b.base === 'string' ? b.base : undefined)); });
+  // drag and drop: {above, below} are the notes that should end up directly over and under it
+  app.post('/api/notes/:id/move', async (c) => { const b = await body(c); return c.json(S.moveNote(db, uid(c), c.req.param('id'), typeof b.above === 'string' ? b.above : null, typeof b.below === 'string' ? b.below : null)); });
   app.delete('/api/notes/:id', (c) => { S.deleteNote(db, uid(c), c.req.param('id')); return c.json({ ok: true }); });
-  // the task of a note: make one, change it, take it off (the note stays)
-  app.put('/api/notes/:id/task', async (c) => c.json(S.createTask(db, uid(c), { ...(await body(c)), noteId: c.req.param('id') }), 201));
-  app.patch('/api/notes/:id/task', async (c) => { const n = S.getNote(db, uid(c), c.req.param('id')); if (!n.task) throw new S.HttpError(404, 'That note is not a task'); return c.json(S.updateTask(db, uid(c), n.task.id, await body(c))); });
-  app.delete('/api/notes/:id/task', (c) => { S.detachTask(db, uid(c), c.req.param('id')); return c.json({ ok: true }); });
   app.get('/api/tags', (c) => c.json(S.listTags(db, uid(c))));
   // {from, to} renames; {title, emoji, color} sets the tag's look (either may be sent, '' clears)
   app.patch('/api/tags', async (c) => {
@@ -145,35 +143,16 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
   });
   app.delete('/api/tags', (c) => { S.deleteTag(db, uid(c), c.req.query('title') ?? ''); return c.json({ ok: true }); });
 
-  // ---- projects and tasks ----
-  app.get('/api/projects', (c) => c.json(S.listProjects(db, uid(c))));
-  app.post('/api/projects', async (c) => c.json(S.createProject(db, uid(c), await body(c)), 201));
-  app.patch('/api/projects/:id', async (c) => c.json(S.updateProject(db, uid(c), Number(c.req.param('id')), await body(c))));
-  app.delete('/api/projects/:id', (c) => { S.deleteProject(db, uid(c), Number(c.req.param('id'))); return c.json({ ok: true }); });
-
-  app.get('/api/tasks', (c) => {
-    const q = c.req.query();
-    return c.json(S.listTasks(db, uid(c), { projectId: int(q.project), done: bool3(q.done), q: q.q, due: q.due as any, tag: q.tag || q.label || undefined, favorites: q.favorites === '1' }));
-  });
-  app.post('/api/tasks', async (c) => c.json(S.createTask(db, uid(c), await body(c)), 201));
-  app.get('/api/tasks/:id', (c) => c.json(S.getTask(db, uid(c), Number(c.req.param('id')))));
-  app.patch('/api/tasks/:id', async (c) => c.json(S.updateTask(db, uid(c), Number(c.req.param('id')), await body(c))));
-  app.delete('/api/tasks/:id', (c) => { S.deleteTask(db, uid(c), Number(c.req.param('id'))); return c.json({ ok: true }); });
-  app.post('/api/tasks/:id/relations', async (c) => { const b = await body(c); S.addRelation(db, uid(c), Number(c.req.param('id')), Number(b.otherId), String(b.kind)); return c.json(S.getTask(db, uid(c), Number(c.req.param('id')))); });
-  app.delete('/api/tasks/:id/relations/:other/:kind', (c) => { S.removeRelation(db, uid(c), Number(c.req.param('id')), Number(c.req.param('other')), c.req.param('kind')); return c.json(S.getTask(db, uid(c), Number(c.req.param('id')))); });
-  app.post('/api/tasks/:id/comments', async (c) => { const b = await body(c); S.addComment(db, uid(c), Number(c.req.param('id')), String(b.comment ?? ''), (c.get('user') as AuthUser).username); return c.json(S.getTask(db, uid(c), Number(c.req.param('id'))), 201); });
-  app.delete('/api/tasks/:id/comments/:cid', (c) => { S.deleteComment(db, uid(c), Number(c.req.param('id')), Number(c.req.param('cid'))); return c.json(S.getTask(db, uid(c), Number(c.req.param('id')))); });
-
   // ---- import and export ----
   const stamp = () => new Date().toISOString().slice(0, 10);
   const download = (c: any, data: Uint8Array, name: string) => c.body(data, 200, { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${name}"` });
   app.get('/api/export/standardnotes', (c) => download(c, exportStandardNotes(db, uid(c), c.req.query('plain') === '1'), `turbokeep-standard-notes-${stamp()}${c.req.query('plain') === '1' ? '-plaintext' : ''}.zip`));
   app.get('/api/export/turbokeep', (c) => download(c, exportTurboKeep(db, uid(c)), `turbokeep-${stamp()}.zip`));
   app.get('/api/export/vikunja', (c) => {
-    const { zip, droppedRelations } = exportVikunja(db, c.get('user'), { crossProject: c.req.query('relations') === 'all' });
-    c.header('X-Dropped-Relations', String(droppedRelations)); // see formats/vikunja.ts: why relations between projects are left out by default
-    c.header('Access-Control-Expose-Headers', 'X-Dropped-Relations');
-    return download(c, zip, `turbokeep-vikunja-${stamp()}${c.req.query('relations') === 'all' ? '-all-relations' : ''}.zip`);
+    const { zip, notListed } = exportVikunja(db, c.get('user'));
+    c.header('X-Not-Exported', String(notListed)); // notes that are not on the list have no place in Vikunja
+    c.header('Access-Control-Expose-Headers', 'X-Not-Exported');
+    return download(c, zip, `turbokeep-vikunja-${stamp()}.zip`);
   });
 
   async function uploads(c: any): Promise<{ name: string; data: Uint8Array }[]> {

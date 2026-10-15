@@ -32,6 +32,9 @@ class SetupActivity : AppCompatActivity() {
         val url = field("https://keep.example.com or http://192.168.1.20:47901", prefs.serverUrl, InputType.TYPE_TEXT_VARIATION_URI)
         val cfId = field("Client ID (optional)", prefs.cfId)
         val cfSecret = field("Client Secret (optional)", prefs.cfSecret, InputType.TYPE_TEXT_VARIATION_PASSWORD)
+        val pairing = field("Pairing code (optional)", "")
+        val useCode = Button(this).apply { text = "Use code" }
+        var pairedToken = ""
         val message = TextView(this).apply { setTextColor(0xFFFF6B5E.toInt()); setPadding(0, px(10), 0, 0) }
         val connect = Button(this).apply { text = "Connect" }
         val box = LinearLayout(this).apply {
@@ -40,6 +43,9 @@ class SetupActivity : AppCompatActivity() {
             addView(TextView(context).apply { text = "TurboKeep"; textSize = 26f; setTextColor(0xFFFFFFFF.toInt()) })
             addView(label("Your server's address. You sign in on the next screen.", 15f))
             addView(url, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(label("Have a pairing code? On the web page: Settings > This app > Pair a phone. Paste it here and everything below is filled in."))
+            addView(pairing, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(useCode)
             addView(label("Only if the server is behind Cloudflare Access: a service token (Zero Trust > Access > Service Auth). The widget uses it when its sign-in cookie runs out."))
             addView(cfId, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(cfSecret, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -51,6 +57,14 @@ class SetupActivity : AppCompatActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(scroll) { v, insets ->
             val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
             v.setPadding(b.left, b.top, b.right, b.bottom); WindowInsetsCompat.CONSUMED
+        }
+
+        useCode.setOnClickListener {
+            val p = PairCode.decode(pairing.text.toString())
+            if (p == null) { message.setTextColor(0xFFFF6B5E.toInt()); message.text = "That is not a TurboKeep pairing code. It starts with ${PairCode.PREFIX}"; return@setOnClickListener }
+            if (p.url.isNotEmpty()) url.setText(p.url)
+            cfId.setText(p.cfId); cfSecret.setText(p.cfSecret); pairedToken = p.token; pairing.setText("")
+            message.setTextColor(0xFF9A9AA5.toInt()); message.text = "Code accepted. Press Connect."
         }
 
         connect.setOnClickListener {
@@ -70,6 +84,7 @@ class SetupActivity : AppCompatActivity() {
                         // a different server means the old token is no good
                         if (prefs.serverUrl != address) prefs.token = ""
                         prefs.serverUrl = address; prefs.cfId = id; prefs.cfSecret = secret
+                        if (pairedToken.isNotEmpty()) prefs.token = pairedToken // from a pairing code: the widget can talk to the server at once
                         setResult(Activity.RESULT_OK); finish()
                     }
                 }

@@ -23,6 +23,7 @@ create table if not exists sessions (
   expires_at text,
   last_used text
 );
+-- one kind of thing: every note can sit on the Home list (a checkbox), be filed under tags, be pinned, archived (= done for a list item) or binned
 create table if not exists notes (
   id text primary key,
   user_id integer not null references users(id) on delete cascade,
@@ -32,6 +33,10 @@ create table if not exists notes (
   pinned integer not null default 0,
   archived integer not null default 0,
   trashed integer not null default 0,
+  on_list integer not null default 0,
+  due_date text,
+  percent_done real not null default 0,
+  position real not null default 0,
   created_at text not null,
   updated_at text not null
 );
@@ -49,63 +54,6 @@ create table if not exists note_tags (
   note_id text not null references notes(id) on delete cascade,
   tag_id text not null references tags(id) on delete cascade,
   primary key (note_id, tag_id)
-);
-create table if not exists projects (
-  id integer primary key autoincrement,
-  user_id integer not null references users(id) on delete cascade,
-  title text not null,
-  description text not null default '',
-  hex_color text not null default '',
-  parent_id integer references projects(id) on delete set null,
-  is_archived integer not null default 0,
-  is_favorite integer not null default 0,
-  is_inbox integer not null default 0,
-  position real not null default 0,
-  created_at text not null,
-  updated_at text not null
-);
--- a task is a note with task fields: the title and the text live on the note, so everything (search, tags, trash, export) works one way
-create table if not exists tasks (
-  id integer primary key autoincrement,
-  user_id integer not null references users(id) on delete cascade,
-  note_id text not null unique references notes(id) on delete cascade,
-  project_id integer not null references projects(id) on delete cascade,
-  done integer not null default 0,
-  done_at text,
-  due_date text,
-  start_date text,
-  end_date text,
-  priority integer not null default 0,
-  percent_done real not null default 0,
-  hex_color text not null default '',
-  is_favorite integer not null default 0,
-  position real not null default 0,
-  repeat_after integer not null default 0,
-  repeat_mode integer not null default 0,
-  created_at text not null,
-  updated_at text not null
-);
-create index if not exists tasks_user_project on tasks(user_id, project_id);
-create table if not exists task_reminders (
-  id integer primary key autoincrement,
-  task_id integer not null references tasks(id) on delete cascade,
-  reminder text,
-  relative_period integer not null default 0,
-  relative_to text not null default ''
-);
-create table if not exists task_relations (
-  task_id integer not null references tasks(id) on delete cascade,
-  other_task_id integer not null references tasks(id) on delete cascade,
-  kind text not null,
-  primary key (task_id, other_task_id, kind)
-);
-create table if not exists task_comments (
-  id integer primary key autoincrement,
-  task_id integer not null references tasks(id) on delete cascade,
-  comment text not null,
-  author text not null default '',
-  created_at text not null,
-  updated_at text not null
 );
 `;
 
@@ -138,6 +86,42 @@ export const MIGRATIONS: Migration[] = [
   },
   // 2 -> 3: a tag can have an emoji and a colour
   "alter table tags add column emoji text not null default ''; alter table tags add column color text not null default ''",
+  // 3 -> 4: one kind of thing. A task's few kept fields move onto its note; lists ("projects") become tags, done becomes archived, comments are
+  // appended to the text; reminders, relations, repeats, priority, start/end dates are dropped (the owner did not use them)
+  (db) => {
+    db.exec(`alter table notes add column on_list integer not null default 0; alter table notes add column due_date text;
+      alter table notes add column percent_done real not null default 0; alter table notes add column position real not null default 0`);
+    const projects = new Map<number, Row>();
+    for (const p of db.prepare('select * from projects').all() as Row[]) projects.set(p.id, p);
+    const path = (id: number | null | undefined): string[] => { const p = id ? projects.get(id) : undefined; return p && !p.is_inbox ? [...path(p.parent_id), p.title.replace(/\./g, ' ')] : []; };
+    const tagFor = db.prepare('select id from tags where user_id = ? and title = ?');
+    const newTag = db.prepare('insert into tags (id, user_id, title, created_at) values (?,?,?,?)');
+    const attach = db.prepare('insert or ignore into note_tags (note_id, tag_id) values (?,?)');
+    const hasComments = !!db.prepare("select 1 x from sqlite_master where name = 'task_comments'").get();
+    const comments = hasComments ? db.prepare('select comment, author, created_at from task_comments where task_id = ? order by id') : null;
+    const upd = db.prepare('update notes set on_list = 1, due_date = ?, percent_done = ?, archived = ?, pinned = ?, text = ? where id = ?');
+    const rows = db.prepare(`select t.*, n.text as n_text, n.archived as n_archived, n.pinned as n_pinned from tasks t join notes n on n.id = t.note_id
+      order by t.done, t.due_date is null, t.due_date, t.position, t.id`).all() as Row[];
+    const order: string[] = [];
+    for (const t of rows) {
+      let text = String(t.n_text);
+      const cs = (comments?.all(t.id) ?? []) as Row[];
+      if (cs.length) text = `${text.trimEnd()}\n\n--- Comments ---\n${cs.map((c) => `${c.author ? `${c.author}, ` : ''}${String(c.created_at).slice(0, 10)}: ${c.comment}`).join('\n')}\n`.trimStart();
+      upd.run(t.due_date, t.percent_done, t.n_archived || t.done ? 1 : 0, t.n_pinned || t.is_favorite ? 1 : 0, text, t.note_id);
+      const proj = path(t.project_id).join('.');
+      if (proj) {
+        let tag = (tagFor.get(t.user_id, proj) as Row | undefined)?.id as string | undefined;
+        if (!tag) { tag = randomUUID(); newTag.run(tag, t.user_id, proj, new Date().toISOString()); }
+        attach.run(t.note_id, tag);
+      }
+      order.push(t.note_id);
+    }
+    // hand-ordering starts from the order the lists had; plain notes follow, newest edit first
+    const setPos = db.prepare('update notes set position = ? where id = ?');
+    order.forEach((id, i) => setPos.run(i + 1, id));
+    (db.prepare('select id from notes where on_list = 0 order by pinned desc, updated_at desc').all() as Row[]).forEach((r, i) => setPos.run(order.length + i + 1, r.id));
+    db.exec('drop table if exists task_reminders; drop table if exists task_relations; drop table if exists task_comments; drop table tasks; drop table if exists projects');
+  },
 ];
 export const SCHEMA_VERSION = 1 + MIGRATIONS.length;
 
@@ -145,7 +129,8 @@ function migrate(db: DatabaseSync) {
   let have = Number((db.prepare('pragma user_version').get() as Row).user_version);
   // a database made before versions existed has its tables already: the shape of `tasks` says which version it is (a new one has no tables)
   if (have === 0 && db.prepare("select 1 x from sqlite_master where type = 'table' and name = 'tasks'").get())
-    have = (db.prepare("select 1 x from pragma_table_info('tasks') where name = 'note_id'").get() ? SCHEMA_VERSION : 1);
+    have = (db.prepare("select 1 x from pragma_table_info('tasks') where name = 'note_id'").get() ? (db.prepare("select 1 x from pragma_table_info('tags') where name = 'emoji'").get() ? 3 : 2) : 1);
+  else if (have === 0 && db.prepare("select 1 x from pragma_table_info('notes') where name = 'on_list'").get()) have = SCHEMA_VERSION;
   if (have > SCHEMA_VERSION) throw new Error(`This database is from a newer TurboKeep (schema ${have}, this server knows ${SCHEMA_VERSION}). Update the server, or restore a backup.`);
   if (have === SCHEMA_VERSION) { db.exec(`pragma user_version = ${SCHEMA_VERSION}`); return; }
   db.exec('begin immediate');

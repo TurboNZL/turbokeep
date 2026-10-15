@@ -3,7 +3,6 @@ import { strToU8, unzipSync } from 'fflate';
 import { createApp } from './app.ts';
 import { loadConfig } from './config.ts';
 import { openDb } from './db.ts';
-import { nextDates } from './store.ts';
 import { buildStandardNotesZip } from './formats/standardnotes.ts';
 
 const cfg = { ...loadConfig({}), webDir: '/nonexistent', trustProxy: true };
@@ -121,39 +120,65 @@ describe('notes', () => {
   });
 });
 
-describe('tasks', () => {
-  it('puts tasks in the Inbox, with labels, reminders and relations (both directions)', async () => {
-    const projects = (await json('GET', '/api/projects')).body;
-    expect(projects[0]).toMatchObject({ title: 'Inbox', isInbox: true });
-    const a = (await json('POST', '/api/tasks', { title: 'Plan trip', tags: ['travel'], priority: 4, dueDate: '2030-01-01T10:00:00Z', reminders: [{ reminder: '2029-12-31T10:00:00Z' }] })).body;
-    const b = (await json('POST', '/api/tasks', { title: 'Book flights' })).body;
-    expect(a.projectId).toBe(projects[0].id);
-    expect(a.tags).toEqual(['travel']);
-    const rel = (await json('POST', `/api/tasks/${a.id}/relations`, { otherId: b.id, kind: 'subtask' })).body;
-    expect(rel.related.subtask[0].id).toBe(b.id);
-    expect((await json('GET', `/api/tasks/${b.id}`)).body.related.parenttask[0].id).toBe(a.id);
-    expect((await json('GET', '/api/tasks?done=false&q=flights')).body).toHaveLength(1);
-    expect((await json('GET', '/api/tasks?tag=travel')).body).toHaveLength(1);
-    await json('PATCH', `/api/tasks/${b.id}`, { done: true });
-    expect((await json('GET', '/api/tasks?done=true')).body[0].doneAt).toBeTruthy();
+describe('one kind of thing: the list, finishing, ordering', () => {
+  it('Home shows only what is on the list; finishing archives; the archive brings it back', async () => {
+    const a = (await json('POST', '/api/notes', { title: 'Buy milk', onList: true })).body;
+    await json('POST', '/api/notes', { title: 'Meeting notes', text: 'agenda', tags: ['work'] });
+    expect(a).toMatchObject({ onList: true, archived: false, percentDone: 0, dueDate: null });
+    expect((await json('GET', '/api/notes?list=1')).body.map((n: any) => n.title)).toEqual(['Buy milk']);
+    expect((await json('GET', '/api/notes?list=0')).body.map((n: any) => n.title)).toEqual(['Meeting notes']);
+    expect((await json('GET', '/api/notes?tag=work')).body.map((n: any) => n.title)).toEqual(['Meeting notes']);
+    expect((await json('GET', '/api/notes?untagged=1')).body.map((n: any) => n.title)).toEqual(['Buy milk']);
+    await json('PATCH', `/api/notes/${a.id}`, { archived: true }); // finish it
+    expect((await json('GET', '/api/notes?list=1')).body).toEqual([]);
+    expect((await json('GET', '/api/notes?view=archived')).body.map((n: any) => n.title)).toEqual(['Buy milk']);
+    await json('PATCH', `/api/notes/${a.id}`, { archived: false });
+    expect((await json('GET', '/api/notes?list=1')).body).toHaveLength(1);
   });
-  it('a repeating task stays open and moves its due date on', async () => {
-    const t = (await json('POST', '/api/tasks', { title: 'Water plants', dueDate: '2020-01-01T08:00:00Z', repeatAfter: 86400 })).body;
-    const r = (await json('PATCH', `/api/tasks/${t.id}`, { done: true })).body;
-    expect(r.done).toBe(false);
-    expect(new Date(r.dueDate).getTime()).toBeGreaterThan(Date.now());
+  it('"commit to memory": filing under tags and taking it off the list in one go', async () => {
+    const a = (await json('POST', '/api/notes', { title: 'Idea', onList: true })).body;
+    const r = (await json('PATCH', `/api/notes/${a.id}`, { onList: false, tags: ['ideas', 'work'] })).body;
+    expect(r).toMatchObject({ onList: false, tags: ['ideas', 'work'] });
+    expect((await json('GET', '/api/notes?list=1')).body).toEqual([]);
+    expect((await json('GET', '/api/notes?tag=ideas')).body).toHaveLength(1);
   });
-  it('nextDates: from-current-date and monthly modes', () => {
-    const at = new Date('2024-06-10T12:00:00Z');
-    expect(nextDates({ due_date: '2024-06-01T09:00:00Z', start_date: null, end_date: null, repeat_after: 3600, repeat_mode: 2 }, at).due_date).toBe('2024-06-10T13:00:00.000Z');
-    expect(nextDates({ due_date: '2024-06-01T09:00:00Z', start_date: null, end_date: null, repeat_after: 0, repeat_mode: 1 }, at).due_date).toBe('2024-07-01T09:00:00.000Z');
+  it('due dates, progress, and the due filters', async () => {
+    const soon = new Date(Date.now() + 3600_000).toISOString(), past = new Date(Date.now() - 3 * 86400_000).toISOString();
+    const a = (await json('POST', '/api/notes', { title: 'a', onList: true, dueDate: soon, percentDone: 0.4 })).body;
+    await json('POST', '/api/notes', { title: 'b', onList: true, dueDate: past });
+    expect(a).toMatchObject({ dueDate: soon, percentDone: 0.4 });
+    expect((await json('GET', '/api/notes?due=overdue')).body.map((n: any) => n.title)).toEqual(['b']);
+    expect((await json('GET', '/api/notes?due=any')).body).toHaveLength(2);
+    expect((await json('PATCH', `/api/notes/${a.id}`, { percentDone: 7, dueDate: null })).body).toMatchObject({ percentDone: 1, dueDate: null });
+    expect((await json('PATCH', `/api/notes/${a.id}`, { dueDate: 'not a date' })).status).toBe(400);
   });
-  it('refuses to delete the Inbox or nest a project in itself', async () => {
-    const inbox = (await json('GET', '/api/projects')).body[0];
-    expect((await json('DELETE', `/api/projects/${inbox.id}`)).status).toBe(400);
-    const p = (await json('POST', '/api/projects', { title: 'A' })).body;
-    const q = (await json('POST', '/api/projects', { title: 'B', parentId: p.id })).body;
-    expect((await json('PATCH', `/api/projects/${p.id}`, { parentId: q.id })).status).toBe(400);
+  it('new items go to the top; move puts one between two others and survives many moves', async () => {
+    const ids: string[] = [];
+    for (const t of ['one', 'two', 'three', 'four']) ids.push((await json('POST', '/api/notes', { title: t, onList: true })).body.id);
+    const order = async () => (await json('GET', '/api/notes?list=1')).body.map((n: any) => n.title);
+    expect(await order()).toEqual(['four', 'three', 'two', 'one']);
+    await json('POST', `/api/notes/${ids[0]}/move`, { above: null, below: ids[3] }); // "one" to the top
+    expect(await order()).toEqual(['one', 'four', 'three', 'two']);
+    await json('POST', `/api/notes/${ids[1]}/move`, { above: ids[3], below: ids[2] }); // "two" between four and three
+    expect(await order()).toEqual(['one', 'four', 'two', 'three']);
+    await json('POST', `/api/notes/${ids[3]}/move`, { above: ids[2], below: null }); // "four" to the end
+    expect(await order()).toEqual(['one', 'two', 'three', 'four']);
+    // squeeze: always between the same two, the gap halves each time until the server has to renumber
+    for (let i = 0; i < 60; i++) await json('POST', `/api/notes/${ids[1]}/move`, { above: ids[0], below: ids[2] });
+    expect(await order()).toEqual(['one', 'two', 'three', 'four']);
+    expect((await json('POST', `/api/notes/${ids[0]}/move`, {})).status).toBe(200);
+  });
+  it('pinning, finishing and moving do not stop an open editor from saving its text; only editing the text moves updatedAt', async () => {
+    const n = (await json('POST', '/api/notes', { title: 't', text: 'one', onList: true })).body;
+    await new Promise((r) => setTimeout(r, 5));
+    const pinned = (await json('PATCH', `/api/notes/${n.id}`, { pinned: true, archived: false })).body;
+    expect(pinned.updatedAt).toBe(n.updatedAt);
+    await json('POST', `/api/notes/${n.id}/move`, {});
+    expect((await json('PATCH', `/api/notes/${n.id}`, { text: 'two', base: n.updatedAt })).status).toBe(200);
+  });
+  it('the old task, project and relation routes are gone', async () => {
+    expect((await json('GET', '/api/tasks')).status).toBe(404);
+    expect((await json('GET', '/api/projects')).status).toBe(404);
   });
 });
 
@@ -182,202 +207,108 @@ describe('import and export through HTTP', () => {
     expect(bad.status).toBe(400);
     expect((await json('POST', '/api/import/vikunja', upload('x.json', strToU8('not json')))).status).toBe(400);
   });
-  it('Vikunja: export, import into a second account, nothing important lost', async () => {
-    const proj = (await json('POST', '/api/projects', { title: 'Work', hexColor: 'ff8800' })).body;
-    const sub = (await json('POST', '/api/projects', { title: 'Sub', parentId: proj.id })).body;
-    const a = (await json('POST', '/api/tasks', { title: 'Write report', projectId: proj.id, tags: ['urgent'], priority: 5, dueDate: '2031-03-04T05:06:07Z', description: '<p>hi</p>', repeatAfter: 604800, reminders: [{ reminder: '2031-03-03T05:06:07Z' }] })).body;
-    const b = (await json('POST', '/api/tasks', { title: 'Collect data', projectId: sub.id, done: true })).body;
-    await json('POST', `/api/tasks/${a.id}/relations`, { otherId: b.id, kind: 'blocked' });
-    await json('DELETE', `/api/tasks/${a.id}/relations/${b.id}/blocked`);
-    await json('POST', `/api/tasks/${a.id}/comments`, { comment: 'started' });
-    await json('POST', `/api/tasks/${a.id}/relations`, { otherId: b.id, kind: 'subtask' });
-    const exp = await call('GET', '/api/export/vikunja?relations=all');
-    expect(exp.headers.get('x-dropped-relations')).toBe('0');
+  const second = async () => {
+    const app2 = createApp(openDb(':memory:'), cfg, { code: null });
+    const reg = await app2.request('/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'second', password: 'longenoughpassword' }) });
+    const ck = reg.headers.get('set-cookie')!.split(';')[0]!;
+    return { get: async (p: string) => (await (await app2.request(p, { headers: { cookie: ck } })).json()) as any, post: (p: string, d: FormData) => app2.request(p, { method: 'POST', headers: { cookie: ck }, body: d }) };
+  };
+  it('Vikunja: the list goes out as one project, tags as coloured labels; importing it elsewhere keeps what TurboKeep keeps', async () => {
+    await json('POST', '/api/notes', { title: 'Write report', text: 'draft', onList: true, tags: ['urgent'], pinned: true, dueDate: '2031-03-04T05:06:07Z', percentDone: 0.25 });
+    await json('POST', '/api/notes', { title: 'Collect data', onList: true, archived: true });
+    await json('POST', '/api/notes', { title: 'Just a note', text: 'not a task' });
+    await json('PATCH', '/api/tags', { title: 'urgent', color: 'ff0000' });
+    const exp = await call('GET', '/api/export/vikunja');
+    expect(exp.headers.get('x-not-exported')).toBe('1');
     const zip = new Uint8Array(await exp.arrayBuffer());
-    const files = unzipSync(zip);
-    expect(Object.keys(files).sort()).toEqual(['VERSION', 'data.json']);
+    const data = JSON.parse(new TextDecoder().decode(unzipSync(zip)['data.json']));
+    expect(data).toHaveLength(1);
+    expect(data[0].tasks.map((t: any) => [t.title, t.done])).toEqual([['Write report', false], ['Collect data', true]]);
+    expect(data[0].tasks[0].labels[0]).toMatchObject({ title: 'urgent', hex_color: 'ff0000' });
 
-    cookie = '';
-    const two = createApp(openDb(':memory:'), cfg, { code: null });
-    const reg = await two.request('/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'second', password: 'longenoughpassword' }) });
-    const c2 = reg.headers.get('set-cookie')!.split(';')[0]!;
-    const res = await two.request('/api/import/vikunja', { method: 'POST', headers: { cookie: c2 }, body: upload('v.zip', zip) });
-    const report = await res.json() as any;
-    expect(report).toMatchObject({ projects: 2, tasks: 2, tags: 1, comments: 1, relations: 1 });
-    const get = async (p: string) => (await (await two.request(p, { headers: { cookie: c2 } })).json()) as any;
-    const projects = await get('/api/projects');
-    const work = projects.find((p: any) => p.title === 'Work'), subp = projects.find((p: any) => p.title === 'Sub');
-    expect(work.hexColor).toBe('ff8800');
-    expect(subp.parentId).toBe(work.id);
-    const tasks = await get('/api/tasks');
-    const t = tasks.find((x: any) => x.title === 'Write report'), u = tasks.find((x: any) => x.title === 'Collect data');
-    expect(t).toMatchObject({ priority: 5, dueDate: '2031-03-04T05:06:07.000Z', description: '<p>hi</p>', repeatAfter: 604800, tags: ['urgent'], reminders: [{ reminder: '2031-03-03T05:06:07.000Z' }] });
-    expect(u.done).toBe(true);
-    expect(t.related.subtask[0].id).toBe(u.id);
-    expect((await get(`/api/tasks/${t.id}`)).comments[0].comment).toBe('started');
+    const two = await second();
+    const f = new FormData(); f.append('file', new File([zip as BlobPart], 'v.zip'));
+    const report = await (await two.post('/api/import/vikunja', f)).json() as any;
+    expect(report).toMatchObject({ notes: 2, tags: 2 }); // the label and the project name
+    const notes = await two.get('/api/notes?list=1&view=all');
+    const t = notes.find((x: any) => x.title === 'Write report'), u = notes.find((x: any) => x.title === 'Collect data');
+    expect(t).toMatchObject({ onList: true, pinned: true, dueDate: '2031-03-04T05:06:07.000Z', percentDone: 0.25, archived: false, tags: ['TurboKeep', 'urgent'] });
+    expect(u.archived).toBe(true);
   });
   it('export of an empty account is still a valid file', async () => {
     const zip = new Uint8Array(await (await call('GET', '/api/export/vikunja')).arrayBuffer());
-    expect(JSON.parse(new TextDecoder().decode(unzipSync(zip)['data.json']))[0]).toMatchObject({ title: 'Inbox', tasks: [] });
+    expect(JSON.parse(new TextDecoder().decode(unzipSync(zip)['data.json']))[0]).toMatchObject({ title: 'TurboKeep', tasks: [] });
   });
 });
 
 describe('a genuine Vikunja export', () => {
   // made by a real Vikunja 0.24.6 (Settings > Export): 2 inboxes, a project with a parent task, two subtasks that follow each other
-  it('imports: the empty inbox merges into ours, relations keep their kinds, nothing doubles', async () => {
+  it('imports every task as an item on the list; the project becomes a tag, the inbox does not, relations are dropped with a warning', async () => {
     const { readFileSync } = await import('node:fs');
     const zip = new Uint8Array(readFileSync(new URL('../test/fixtures/vikunja-0.24.6-export.zip', import.meta.url)));
     const r = (await json('POST', '/api/import/vikunja', upload('export.zip', zip))).body;
-    expect(r).toMatchObject({ projects: 1, tasks: 4 });
-    const tasks = (await json('GET', '/api/tasks')).body;
-    expect(tasks.map((t: any) => t.title).sort()).toEqual(['Child 1', 'Child 2', 'Elsewhere', 'Parent']);
-    const parent = tasks.find((t: any) => t.title === 'Parent');
-    expect(parent.related.subtask.map((x: any) => x.title)).toEqual(['Child 1', 'Child 2']);
-    expect(tasks.find((t: any) => t.title === 'Child 1').related.precedes[0].title).toBe('Child 2');
-    expect((await json('GET', '/api/projects')).body.map((p: any) => p.title)).toEqual(['Inbox', 'Work']);
+    expect(r).toMatchObject({ notes: 4 });
+    expect(r.warnings.join(' ')).toMatch(/related tasks/);
+    const notes = (await json('GET', '/api/notes?list=1')).body;
+    expect(notes.map((t: any) => t.title).sort()).toEqual(['Child 1', 'Child 2', 'Elsewhere', 'Parent']);
+    expect(notes.every((n: any) => n.onList)).toBe(true);
+    expect(new Set(notes.flatMap((n: any) => n.tags))).toEqual(new Set(['Work']));
   });
 });
 
-describe('a note can be a task', () => {
-  it('PUT makes a task from a note; the title, text and tags are the note\'s, and the list shows both kinds', async () => {
-    const note = (await json('POST', '/api/notes', { title: 'Plan trip', text: 'flights\nhotel', tags: ['travel'] })).body;
-    await json('POST', '/api/notes', { title: 'Just a note', text: 'no task here' });
-    expect(note.task).toBeNull();
-    const t = (await json('PUT', `/api/notes/${note.id}/task`, { dueDate: '2031-05-06T07:08:09Z', priority: 3, isFavorite: true })).body;
-    expect(t).toMatchObject({ noteId: note.id, title: 'Plan trip', description: 'flights\nhotel', tags: ['travel'], priority: 3, done: false });
-    expect((await json('PUT', `/api/notes/${note.id}/task`, {})).status).toBe(409); // already a task
-    const all = (await json('GET', '/api/notes')).body;
-    expect(all.map((n: any) => [n.title, !!n.task]).sort()).toEqual([['Just a note', false], ['Plan trip', true]]);
-    expect(all.find((n: any) => n.title === 'Plan trip').task).toMatchObject({ id: t.id, priority: 3, isFavorite: true, dueDate: '2031-05-06T07:08:09.000Z' });
-    expect((await json('GET', '/api/notes?kind=tasks')).body.map((n: any) => n.title)).toEqual(['Plan trip']);
-    expect((await json('GET', '/api/notes?kind=notes')).body.map((n: any) => n.title)).toEqual(['Just a note']);
-    expect((await json('GET', '/api/notes?favorites=1')).body).toHaveLength(1);
-    expect((await json('GET', `/api/notes/${note.id}`)).body.task).toMatchObject({ id: t.id, comments: [], reminders: [] }); // the detail has the whole task
-  });
-  it('done=false hides finished tasks but keeps plain notes; done=true shows only finished tasks', async () => {
-    const a = (await json('POST', '/api/tasks', { title: 'Open task' })).body;
-    const b = (await json('POST', '/api/tasks', { title: 'Done task' })).body;
-    await json('POST', '/api/notes', { title: 'Plain' });
-    await json('PATCH', `/api/notes/${b.noteId}/task`, { done: true });
-    expect((await json('GET', '/api/notes?done=false')).body.map((n: any) => n.title).sort()).toEqual(['Open task', 'Plain']);
-    expect((await json('GET', '/api/notes?done=true')).body.map((n: any) => n.title)).toEqual(['Done task']);
-    expect(a.noteId).toBeTruthy();
-  });
-  it('a task made through /api/tasks is a note too, and editing either side edits both', async () => {
-    const t = (await json('POST', '/api/tasks', { title: 'Buy milk', description: '2 litres', tags: ['home'] })).body;
-    expect((await json('GET', `/api/notes/${t.noteId}`)).body).toMatchObject({ title: 'Buy milk', text: '2 litres', tags: ['home'] });
-    await json('PATCH', `/api/notes/${t.noteId}`, { title: 'Buy oat milk', text: '3 litres', tags: ['home', 'food'] });
-    expect((await json('GET', `/api/tasks/${t.id}`)).body).toMatchObject({ title: 'Buy oat milk', description: '3 litres', tags: ['food', 'home'] });
-    await json('PATCH', `/api/tasks/${t.id}`, { title: 'Buy almond milk' });
-    expect((await json('GET', `/api/notes/${t.noteId}`)).body.title).toBe('Buy almond milk');
-    expect((await json('GET', '/api/notes?q=almond')).body).toHaveLength(1);
-    expect((await json('GET', '/api/tasks?q=almond')).body).toHaveLength(1);
-  });
-  it('taking the task off keeps the note; deleting the task or the note removes both; the trash hides tasks', async () => {
-    const a = (await json('POST', '/api/tasks', { title: 'Detach me' })).body;
-    expect((await json('DELETE', `/api/notes/${a.noteId}/task`)).status).toBe(200);
-    expect((await json('GET', `/api/notes/${a.noteId}`)).body.task).toBeNull();
-    expect((await json('GET', `/api/tasks/${a.id}`)).status).toBe(404);
-    expect((await json('DELETE', `/api/notes/${a.noteId}/task`)).status).toBe(404);
-
-    const b = (await json('POST', '/api/tasks', { title: 'Delete the task' })).body;
-    await json('DELETE', `/api/tasks/${b.id}`);
-    expect((await json('GET', `/api/notes/${b.noteId}`)).status).toBe(404); // a task is a note: both go
-
-    const c = (await json('POST', '/api/tasks', { title: 'Trash the note' })).body;
-    await json('PATCH', `/api/notes/${c.noteId}`, { trashed: true });
-    expect((await json('GET', '/api/tasks')).body.map((t: any) => t.title)).not.toContain('Trash the note');
-    expect((await json('GET', '/api/notes?view=trashed')).body.map((n: any) => n.title)).toContain('Trash the note');
-    await json('DELETE', `/api/notes/${c.noteId}`);
-    expect((await json('GET', `/api/tasks/${c.id}`)).status).toBe(404);
-  });
-  it('relations and comments follow the task, with the note\'s title', async () => {
-    const a = (await json('POST', '/api/tasks', { title: 'Parent' })).body;
-    const b = (await json('POST', '/api/tasks', { title: 'Child' })).body;
-    await json('POST', `/api/tasks/${a.id}/relations`, { otherId: b.id, kind: 'subtask' });
-    await json('POST', `/api/tasks/${a.id}/comments`, { comment: 'remember this' });
-    const d = (await json('GET', `/api/notes/${a.noteId}`)).body.task;
-    expect(d.related.subtask[0]).toMatchObject({ title: 'Child', noteId: b.noteId });
-    expect(d.comments[0].comment).toBe('remember this');
-    await json('PATCH', `/api/notes/${b.noteId}`, { title: 'Renamed child' });
-    expect((await json('GET', `/api/tasks/${a.id}`)).body.related.subtask[0].title).toBe('Renamed child');
-  });
-});
-
-describe('TurboKeep backup (notes and tasks together)', () => {
+describe('TurboKeep backup', () => {
   async function seed() {
-    const work = (await json('POST', '/api/projects', { title: 'Work', hexColor: 'ff8800' })).body;
-    const sub = (await json('POST', '/api/projects', { title: 'Sub', parentId: work.id, isArchived: false })).body;
     const note = (await json('POST', '/api/notes', { title: 'Meeting notes', text: 'agenda', tags: ['work'], pinned: true, noteType: 'markdown' })).body;
     const gone = (await json('POST', '/api/notes', { title: 'Old', text: 'x', archived: true })).body;
-    const a = (await json('POST', '/api/tasks', { title: 'Write report', description: 'draft first', projectId: work.id, tags: ['work', 'urgent'], priority: 4, dueDate: '2031-03-04T05:06:07Z', repeatAfter: 604800, reminders: [{ reminder: '2031-03-03T05:06:07Z' }, { relativeTo: 'due_date', relativePeriod: -3600 }] })).body;
-    const b = (await json('POST', '/api/tasks', { title: 'Collect data', projectId: sub.id, done: true })).body;
-    await json('POST', `/api/tasks/${a.id}/relations`, { otherId: b.id, kind: 'subtask' });
-    await json('POST', `/api/tasks/${a.id}/comments`, { comment: 'started' });
+    const a = (await json('POST', '/api/notes', { title: 'Write report', text: 'draft first', onList: true, tags: ['work', 'urgent'], dueDate: '2031-03-04T05:06:07Z', percentDone: 0.5 })).body;
     const trashed = (await json('POST', '/api/notes', { title: 'In the trash', trashed: true })).body;
-    return { work, sub, note, gone, a, b, trashed };
+    return { note, gone, a, trashed };
   }
   const exportZip = async () => new Uint8Array(await (await call('GET', '/api/export/turbokeep')).arrayBuffer());
-  const second = async () => {
-    const app2 = createApp(openDb(':memory:'), cfg, { code: null });
-    const reg = await app2.request('/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'second', password: 'longenoughpassword' }) });
-    const ck = reg.headers.get('set-cookie')!.split(';')[0]!;
-    return { app2, get: async (p: string) => (await (await app2.request(p, { headers: { cookie: ck } })).json()) as any, post: (p: string, d: FormData) => app2.request(p, { method: 'POST', headers: { cookie: ck }, body: d }) };
-  };
 
   it('exports one file with the format and version, everything in it, the trash and archive included', async () => {
     await seed();
-    const zip = await exportZip();
-    expect(Object.keys(unzipSync(zip))).toEqual(['turbokeep.json']);
-    const j = JSON.parse(new TextDecoder().decode(unzipSync(zip)['turbokeep.json']));
-    expect(j).toMatchObject({ format: 'turbokeep', version: 1 });
-    expect(j.notes).toHaveLength(5); // Meeting notes, Old (archived), In the trash, and the notes of the 2 tasks
-    expect(j.notes.filter((n: any) => n.task)).toHaveLength(2);
-    expect(j.notes.find((n: any) => n.title === 'Write report')).toMatchObject({ text: 'draft first', tags: ['urgent', 'work'], task: { priority: 4, repeatAfter: 604800, comments: [{ comment: 'started' }] } });
-    expect(j.relations.length).toBe(2); // both directions are stored
-    expect(j.projects.map((p: any) => p.title)).toEqual(['Inbox', 'Work', 'Sub']);
+    const j = JSON.parse(new TextDecoder().decode(unzipSync(await exportZip())['turbokeep.json']));
+    expect(j).toMatchObject({ format: 'turbokeep', version: 2 });
+    expect(j.notes).toHaveLength(4);
+    expect(j.notes.find((n: any) => n.title === 'Write report')).toMatchObject({ onList: true, dueDate: '2031-03-04T05:06:07.000Z', percentDone: 0.5, tags: ['urgent', 'work'] });
+    expect(j.projects).toBeUndefined();
   });
-
-  it('into another account: the same notes, tasks, projects, tags, reminders, comments and relations', async () => {
-    await seed();
+  it('into another account: the same notes, the list, dates, progress, tags and the order', async () => {
+    const { a } = await seed();
     const zip = await exportZip();
-    const b = await second();
-    const dry = await (await b.post('/api/import/turbokeep?dry=1', upload('x.zip', zip))).json() as any;
-    expect(dry).toMatchObject({ dry: true, notes: 5, tasks: 2, projects: 2, comments: 1, relations: 1 });
-    expect((await b.get('/api/notes?view=all')).length).toBe(0); // the preview wrote nothing
-    const real = await (await b.post('/api/import/turbokeep', upload('x.zip', zip))).json() as any;
-    expect(real).toMatchObject({ notes: 5, tasks: 2, projects: 2, comments: 1, relations: 1, skipped: 0, dry: false });
-    const notes = await b.get('/api/notes?view=all');
-    expect(notes.map((n: any) => [n.title, n.pinned, n.archived, n.trashed, !!n.task]).sort()).toEqual([
-      ['Collect data', false, false, false, true], ['In the trash', false, false, true, false], ['Meeting notes', true, false, false, false], ['Old', false, true, false, false], ['Write report', false, false, false, true],
-    ]);
-    const report = notes.find((n: any) => n.title === 'Write report');
-    const detail = await b.get(`/api/notes/${report.id}`);
-    expect(detail).toMatchObject({ text: 'draft first', tags: ['urgent', 'work'], noteType: 'plain-text' });
-    expect(detail.task).toMatchObject({ priority: 4, repeatAfter: 604800, dueDate: '2031-03-04T05:06:07.000Z', comments: [{ comment: 'started' }] });
-    expect(detail.task.reminders).toHaveLength(2);
-    expect(detail.task.related.subtask[0].title).toBe('Collect data');
-    const projects = await b.get('/api/projects');
-    const work = projects.find((p: any) => p.title === 'Work'), sub = projects.find((p: any) => p.title === 'Sub');
-    expect(work.hexColor).toBe('ff8800'); expect(sub.parentId).toBe(work.id);
-    expect(detail.task.projectId).toBe(work.id);
-    expect((await b.get('/api/notes?kind=notes')).find((n: any) => n.title === 'Meeting notes')).toMatchObject({ pinned: true, noteType: 'markdown' });
+    const two = await second2();
+    const f = new FormData(); f.append('file', new File([zip as BlobPart], 'b.zip'));
+    const dry = await (await two.post('/api/import/turbokeep?dry=1', f)).json() as any;
+    expect(dry).toMatchObject({ notes: 4, dry: true });
+    expect(await two.get('/api/notes?view=all')).toHaveLength(0);
+    await two.post('/api/import/turbokeep', f);
+    const all = await two.get('/api/notes?view=all');
+    expect(all.map((n: any) => n.title).sort()).toEqual(['In the trash', 'Meeting notes', 'Old', 'Write report']);
+    expect(all.find((n: any) => n.id === a.id)).toMatchObject({ onList: true, percentDone: 0.5, position: a.position });
   });
-
   it('importing it again changes nothing, and after deleting everything it restores everything', async () => {
     await seed();
     const zip = await exportZip();
-    const again = (await json('POST', '/api/import/turbokeep', upload('x.zip', zip))).body;
-    expect(again).toMatchObject({ notes: 0, tasks: 0, projects: 0, skipped: 5 });
-    expect((await json('GET', '/api/notes?view=all')).body).toHaveLength(5);
+    const r = (await json('POST', '/api/import/turbokeep', upload('b.zip', zip))).body;
+    expect(r).toMatchObject({ notes: 0, skipped: 4 });
     for (const n of (await json('GET', '/api/notes?view=all')).body) await json('DELETE', `/api/notes/${n.id}`);
-    for (const p of (await json('GET', '/api/projects')).body) if (!p.isInbox) await json('DELETE', `/api/projects/${p.id}`);
-    expect((await json('GET', '/api/notes?view=all')).body).toHaveLength(0);
-    const back = (await json('POST', '/api/import/turbokeep', upload('x.zip', zip))).body;
-    expect(back).toMatchObject({ notes: 5, tasks: 2, projects: 2, relations: 1 });
-    expect((await json('GET', '/api/notes?kind=tasks&done=false')).body.map((n: any) => n.title)).toEqual(['Write report']);
+    expect((await json('POST', '/api/import/turbokeep', upload('b.zip', zip))).body).toMatchObject({ notes: 4 });
   });
-
+  it('still reads a version 1 backup: tasks go on the list, done is archived, the project is a tag, comments join the text', async () => {
+    const id = '5b3f2c1e-9a4d-4d0e-8f6b-2a1c3d4e5f60', id2 = '6b3f2c1e-9a4d-4d0e-8f6b-2a1c3d4e5f60';
+    const v1 = { format: 'turbokeep', version: 1, projects: [{ id: 1, title: 'Inbox', isInbox: true }, { id: 2, title: 'Work', parentId: null }, { id: 3, title: 'Sub', parentId: 2 }], relations: [{ noteId: id, otherNoteId: id2, kind: 'subtask' }],
+      notes: [{ id, title: 'Task', text: 'body', tags: ['t'], task: { projectId: 3, done: true, dueDate: '2031-01-01T00:00:00Z', percentDone: 0.5, isFavorite: true, priority: 4, reminders: [{ reminder: '2031-01-01T00:00:00Z' }], comments: [{ comment: 'hello', author: 'me', createdAt: '2030-01-02T00:00:00Z' }] } },
+        { id: id2, title: 'Plain', text: '', task: null }] };
+    const r = (await json('POST', '/api/import/turbokeep', upload('b.json', strToU8(JSON.stringify(v1))))).body;
+    expect(r).toMatchObject({ notes: 2 });
+    expect(r.warnings.join(' ')).toMatch(/relation/);
+    const t = (await json('GET', `/api/notes/${id}`)).body;
+    expect(t).toMatchObject({ onList: true, archived: true, pinned: true, percentDone: 0.5, dueDate: '2031-01-01T00:00:00.000Z', tags: ['Work.Sub', 't'] });
+    expect(t.text).toContain('--- Comments ---');
+    expect(t.text).toContain('me, 2030-01-02: hello');
+    expect((await json('GET', `/api/notes/${id2}`)).body.onList).toBe(false);
+  });
   it('refuses what is not a backup, or is from a newer TurboKeep, with a message and writes nothing', async () => {
     const f = (o: object) => upload('b.json', strToU8(JSON.stringify(o)));
     expect((await json('POST', '/api/import/turbokeep', upload('x.json', strToU8('nope')))).status).toBe(400);
@@ -385,10 +316,17 @@ describe('TurboKeep backup (notes and tasks together)', () => {
     expect(wrong.status).toBe(400); expect(wrong.body.error).toMatch(/not a TurboKeep backup/);
     const newer = await json('POST', '/api/import/turbokeep', f({ format: 'turbokeep', version: 99, notes: [] }));
     expect(newer.status).toBe(400); expect(newer.body.error).toMatch(/newer TurboKeep/);
-    const bad = await json('POST', '/api/import/turbokeep', f({ format: 'turbokeep', version: 1, notes: [{ id: 'not-a-uuid', title: 'x' }, { id: '5b3f2c1e-9a4d-4d0e-8f6b-2a1c3d4e5f60', title: 'ok', text: 't' }] }));
+    const bad = await json('POST', '/api/import/turbokeep', f({ format: 'turbokeep', version: 2, notes: [{ id: 'not-a-uuid', title: 'x' }, { id: '5b3f2c1e-9a4d-4d0e-8f6b-2a1c3d4e5f60', title: 'ok', text: 't' }] }));
     expect(bad.body).toMatchObject({ notes: 1 }); expect(bad.body.warnings[0]).toMatch(/skipped/);
   });
 });
+
+async function second2() {
+  const app2 = createApp(openDb(':memory:'), cfg, { code: null });
+  const reg = await app2.request('/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'second', password: 'longenoughpassword' }) });
+  const ck = reg.headers.get('set-cookie')!.split(';')[0]!;
+  return { get: async (p: string) => (await (await app2.request(p, { headers: { cookie: ck } })).json()) as any, post: (p: string, d: FormData) => app2.request(p, { method: 'POST', headers: { cookie: ck }, body: d }) };
+}
 
 describe('tag looks, list excerpts, compression', () => {
   it('a tag can get an emoji and a colour, and keeps them when its last note goes', async () => {

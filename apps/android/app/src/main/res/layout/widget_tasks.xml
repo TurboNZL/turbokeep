@@ -6,46 +6,38 @@
     android:orientation="vertical"
     android:padding="6dp">
 
+    <!-- refresh on the left, the title in the middle (tap: text size, spacing, order), + on the right. The two buttons are the same width, so the title is centred -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="40dp"
+        android:layout_height="44dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
+
+        <ImageView
+            android:id="@+id/refresh"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:contentDescription="Refresh"
+            android:padding="11dp"
+            android:src="@drawable/ic_w_refresh" />
 
         <TextView
             android:id="@+id/title"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:gravity="center_vertical"
-            android:paddingStart="8dp"
+            android:gravity="center"
             android:text="@string/app_name"
             android:textColor="@color/widget_text"
             android:textSize="16sp"
             android:textStyle="bold" />
 
         <ImageView
-            android:id="@+id/refresh"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:contentDescription="Refresh"
-            android:padding="10dp"
-            android:src="@drawable/ic_w_refresh" />
-
-        <ImageView
-            android:id="@+id/add_note"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:contentDescription="New note"
-            android:padding="10dp"
-            android:src="@drawable/ic_w_note" />
-
-        <ImageView
-            android:id="@+id/add_task"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:contentDescription="New task"
-            android:padding="10dp"
+            android:id="@+id/add"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:contentDescription="Add something"
+            android:padding="11dp"
             android:src="@drawable/ic_w_add" />
     </LinearLayout>
 
@@ -67,7 +59,7 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:padding="16dp"
-            android:text="Nothing to do."
+            android:text="Nothing on your list."
             android:textColor="@color/widget_muted"
             android:textSize="14sp" />
     </FrameLayout>
