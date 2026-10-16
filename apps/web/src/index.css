@@ -110,8 +110,9 @@ html, body { overflow-x: hidden; overscroll-behavior-x: none; }
 @keyframes tk-pop { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: none; } }
 .tk-expand { animation: tk-expand 240ms cubic-bezier(0.2, 0.85, 0.3, 1) backwards; transform-origin: top; }
 @keyframes tk-expand { from { opacity: 0; transform: translateY(-6px) scaleY(0.92); } to { opacity: 1; transform: none; } }
-.tk-item[data-arming] .tk-card { box-shadow: inset 0 0 0 1.5px hsl(var(--accent) / 0.55); transform: scale(0.992); }
-.tk-card { transition: box-shadow 140ms ease-out, transform 140ms ease-out; }
+/* the ring waits 110 ms before it shows: a double click (which edits at once) never flashes it, a single click gets it and then fades */
+.tk-item[data-arming] .tk-card { box-shadow: inset 0 0 0 1.5px hsl(var(--accent) / 0.55); transition: box-shadow 160ms ease-out 110ms; }
+.tk-card { transition: box-shadow 160ms ease-out; }
 
 /* drag: the row being carried floats; the grip never starts a scroll */
 .tk-item[data-dragging] .tk-card { box-shadow: 0 18px 40px rgb(0 0 0 / 0.35); }

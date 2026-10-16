@@ -7,7 +7,9 @@ import { cn } from '../lib/cn.ts';
 import { TagPicker } from './TagPicker.tsx';
 import { AutoText } from './AutoText.tsx';
 import { markFresh } from '../lib/fresh.ts';
-import { wantEditorFocus } from '../lib/focus.ts';
+import { wantEditorFocus, typeAhead } from '../lib/focus.ts';
+import { rememberNote } from '../lib/cache.ts';
+import { excerpt } from '../lib/actions.ts';
 import { titleOverflow } from '../lib/title.ts';
 
 /** The Add button elsewhere in the app asks for the focus with this (it works from Settings too: the request waits until Home is on screen). */
@@ -44,13 +46,23 @@ export function Composer({ tag, autoFocus, onAdded, onPopup }: { tag?: string; a
   }, []);
 
   /** Keep views: the first letter makes the item and opens it at once (with the cursor after that letter in its title) */
+  const popping = useRef(false);
+  /** after the first letter made the item: the box keeps showing `base` (what the item's title already is) until the editor has the cursor; letters typed meanwhile are passed on to it */
+  const handoff = useRef<{ id: string; base: string; until: number } | null>(null);
   const popup = async (first: string) => {
-    sending.current = true; setBusy(true);
+    popping.current = true; setBusy(true);
     try {
-      const n = await api.createNote({ title: first, text: '', tags: tag ? [tag] : [], onList: !tag });
-      void useStore.getState().refreshMeta(); pokeWidgets(); markFresh(n.id); onAdded(n); wantEditorFocus(n.id); onPopup?.(n);
+      let n = await api.createNote({ title: first, text: '', tags: tag ? [tag] : [], onList: !tag });
+      // letters typed while the item was being made belong in its title too (until nothing new has arrived)
+      let sent = first;
+      while (draft.current.title.trim() && draft.current.title !== sent) { sent = draft.current.title; n = await api.updateNote(n.id, { title: sent }); }
+      handoff.current = { id: n.id, base: sent, until: Date.now() + 1500 };
+      const ending = window.setInterval(() => { const h = handoff.current; if (h && Date.now() < h.until && document.activeElement === titleEl.current) return; window.clearInterval(ending); if (handoff.current === h) { handoff.current = null; auto.current = false; setTitle(''); setText(''); draft.current = { title: '', text: '' }; } }, 40);
+      void useStore.getState().refreshMeta(); pokeWidgets(); markFresh(n.id);
+      rememberNote(n); // the editor opens from this copy in the same moment, so the cursor is in its title before the next letter
+      onAdded(excerpt(n)); wantEditorFocus(n.id); onPopup?.(n);
     } catch (e) { toast((e as Error).message || 'Could not add that', { tone: 'bad' }); }
-    finally { sending.current = false; setBusy(false); }
+    finally { popping.current = false; setBusy(false); }
   };
 
   /** keep=false: the item goes to the tags only (not on the list). Without tags it goes on the list. */
@@ -61,7 +73,7 @@ export function Composer({ tag, autoFocus, onAdded, onPopup }: { tag?: string; a
     // only a description typed: its first line becomes the title
     const [first = '', ...rest] = typedText.split('\n');
     const t = typedTitle || first, body = typedTitle ? typedText : rest.join('\n').trim();
-    if (sending.current) return null;
+    if (sending.current || popping.current || handoff.current) return null;
     sending.current = true; setBusy(true);
     try {
       const tags = [...new Set([...(tag ? [tag] : []), ...extraTags])];
@@ -82,7 +94,7 @@ export function Composer({ tag, autoFocus, onAdded, onPopup }: { tag?: string; a
       onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node) && !pickingRef.current && !pressing.current) void commit(); }}>
       <div className="flex items-center gap-2">
         <AutoText ref={titleEl} className="input !min-h-11 max-h-48 flex-1 resize-none !py-2.5 !text-base" aria-label="Add something" placeholder={tag ? `Add to ${tag.split('.').pop()}…` : 'Add something…'} value={title} autoFocus={autoFocus}
-          enterKeyHint="done" autoComplete="off" onChange={(e) => { if (onPopup && !title && !text && e.target.value.trim() && !sending.current) { void popup(e.target.value); return; } const o = titleOverflow(e.target.value, text); if (o) { setTitle(o.title); setText(o.text); caret.current = o.caret; auto.current = true; } else { setTitle(e.target.value); auto.current = false; } }}
+          enterKeyHint="done" autoComplete="off" onChange={(e) => { const h = handoff.current; if (h) { const v = e.target.value; const added = v.startsWith(h.base) ? v.slice(h.base.length) : v; if (added) typeAhead(h.id, added); setTitle(h.base); return; } if (onPopup && !title && !text && e.target.value.trim() && !popping.current) { setTitle(e.target.value); draft.current = { title: e.target.value, text: '' }; void popup(e.target.value); return; } const o = titleOverflow(e.target.value, text, e.target.selectionStart); if (o) { setTitle(o.title); setText(o.text); caret.current = o.caret; auto.current = true; } else { setTitle(e.target.value); if (popping.current) draft.current = { title: e.target.value, text: '' }; auto.current = false; } }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void commit().then(() => titleEl.current?.focus()); } }} />
         <button type="button" tabIndex={-1} className="btn btn-accent !min-h-11 !px-3" aria-label="Add" title="Add (Enter)" disabled={busy || (!title.trim() && !text.trim())} onClick={() => void commit().then(() => titleEl.current?.focus())}><Plus size={18} /></button>
       </div>

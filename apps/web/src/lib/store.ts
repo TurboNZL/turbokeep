@@ -49,6 +49,7 @@ export const useStore = create<State>((set, get) => ({
     saveSettings(settings);
     if (patch.cacheLevel) setCacheLevel(settings.cacheLevel);
     set({ settings });
+    if (patch.countTasks !== undefined) void get().refreshMeta(); // the tags column counts differently now: ask again at once, no reload needed
     applyAppearance(settings);
   },
   user: null, auth: 'loading',

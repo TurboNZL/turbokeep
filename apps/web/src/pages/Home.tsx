@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Emoji } from '../lib/emoji.tsx';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowDownUp, Pencil, Plus } from 'lucide-react';
+import { ArrowDownUp, Pencil, Plus, X } from 'lucide-react';
 import { api, type Note, type TagInfo } from '../lib/api.ts';
 import { useStore } from '../lib/store.ts';
 import { cn } from '../lib/cn.ts';
@@ -26,6 +26,8 @@ import { Dialog } from '../components/Dialog.tsx';
 import { OtherPiles } from '../components/OtherPiles.tsx';
 import { useWide } from '../lib/useWide.ts';
 
+/** how many items are drawn at first, and added each time the end of the list comes into view */
+const PAGE = 40;
 const SCOPE_NAMES = { list: 'Tasks', all: 'All notes', due: 'Due soon' } as const;
 /** the editor panel stays on screen while the list scrolls */
 const STICKY = 'md:sticky md:top-20 md:self-start md:max-h-[calc(100dvh-6.5rem-var(--dock-h,0px))] md:overflow-y-auto';
@@ -130,7 +132,19 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   };
   const swapped = useRef(false); // the first list drawn comes in with the page; later ones (another tag, tab or page) swap in
   useEffect(() => { swapped.current = true; }, []);
-  const listEl = keep ? <Wall items={visible} render={row} minRem={settings.cardWidth} gapRem={settings.cardGap} /> : <ul className="space-y-1.5">{visible.map(row)}</ul>;
+  // A long list is drawn a page at a time (a big tag used to draw every item at once): the next page comes as the end scrolls into view
+  const [limit, setLimit] = useState(PAGE);
+  useEffect(() => setLimit(PAGE), [key]);
+  const drawn = useMemo(() => visible.slice(0, limit), [visible, limit]);
+  const more = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = more.current;
+    if (!el || drawn.length >= visible.length) return;
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) setLimit((l) => l + PAGE); }, { rootMargin: '900px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [drawn.length, visible.length]);
+  const listEl = keep ? <Wall items={drawn} render={row} minRem={settings.cardWidth} gapRem={settings.cardGap} /> : <ul className="space-y-1.5">{drawn.map(row)}</ul>;
 
   const listRef = useRef<HTMLElement>(null);
   const rem = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
@@ -147,11 +161,12 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
           : <Select className="!w-44 shrink-0 text-sm" aria-label={`Sort ${name}`} value={sort} onChange={(v) => updateSettings({ sorts: { ...settings.sorts, [skey]: v as SortId } })} options={SORTS.map((x) => ({ value: x.id, label: x.label, icon: x.id === sort ? <ArrowDownUp size={14} className="shrink-0 text-accent" /> : undefined }))} />}
       </div>
       {soon && <p className="-mt-1 text-xs text-muted">The next five things with a date, and everything else due before the end of the day, week, month or 3 months they fall in. Overdue ones come first.</p>}
-      {!filter.q && !archive && !soon && <Composer key={filter.tag ?? ''} tag={filter.tag} autoFocus={wide && !id} onAdded={added} onPopup={settings.popupOnType && keep ? (n) => go(n.id) : undefined} />}
+      {!filter.q && !archive && !soon && <Composer key={filter.tag ?? ''} tag={filter.tag} autoFocus={wide && !id} onAdded={added} onPopup={settings.popupOnType ? (n) => go(n.id) : undefined} />}
       {filter.q && <><p className="text-sm text-muted">Results for “{filter.q}” on {archive ? 'the Archive' : 'Home'} <button className="underline" onClick={() => go(id, { q: undefined })}>clear</button></p><OtherPiles q={filter.q} from={archive ? 'archive' : 'home'} seed={notes.length} /></>}
       {error && <p role="alert" className="text-sm text-bad">{error}</p>}
       {!wide && !id && openNote && <button className="chip inline-flex items-center gap-1.5" onClick={() => nav(homeLink(openNote, filter, base))}><Pencil size={12} />Continue editing: {openTitle}</button>}
-      <div key={key} className={cn(swapped.current && 'tk-swap')}>{draggable ? <SortableList ids={visible.map((n) => n.id)} grid={keep} onMove={(a, b, c) => void move(a, b, c)}>{listEl}</SortableList> : listEl}</div>
+      <div key={key} className={cn(swapped.current && 'tk-swap')}>{draggable ? <SortableList ids={drawn.map((n) => n.id)} grid={keep} onMove={(a, b, c) => void move(a, b, c)}>{listEl}</SortableList> : listEl}</div>
+      {drawn.length < visible.length && <div ref={more} className="py-3 text-center text-xs text-muted">Showing {drawn.length} of {visible.length}. <button type="button" className="underline" onClick={() => setLimit((l) => l + PAGE)}>Show more</button></div>}
       {loaded && !visible.length && !error && (
         <p className="py-8 text-center text-sm text-muted">{filter.q ? 'Nothing matches.' : archive ? 'Nothing archived here.' : filter.tag ? 'Nothing under this tag yet. Send a note to it.' : filter.scope === 'list' ? 'Your list is empty. Type something above.' : filter.scope === 'due' ? 'Nothing has a date yet.' : 'Nothing here.'}</p>)}
       {draggable && <p className="text-center text-xs text-muted">Drag to reorder. On a touch screen, drag the grip. Tap an item to read it, the pencil to edit it. Right-click or hold for more.</p>}
@@ -168,7 +183,7 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   const panel = (
     <div className="relative min-w-0">
       <Divider side="left" lit={foreign} label="Drag to change the width of the editor" onSize={(x, box) => updateSettings({ paneWidth: Math.round(Math.min(SIZE_LIMITS.paneWidth.max, Math.max(SIZE_LIMITS.paneWidth.min, (box.right - x) / rem()))) })} />
-      <div key={id} className={cn(STICKY, 'tk-slide-in')}>{editor}</div>
+      <div key={id} className={cn(STICKY, 'tk-slide-in')}>{editor}<CloseBar onClose={close} /></div>
     </div>);
   return (
     <>
@@ -180,7 +195,7 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
           {(wide || !id) && list}
           {id ? <div className="relative min-w-0 md:col-start-2 md:row-start-2 lg:col-start-3 lg:row-start-1">
             {wide && <Divider side="left" lit={foreign} label="Drag to change the width of the list" onSize={(x) => { const l = listRef.current?.getBoundingClientRect(); if (l) updateSettings({ listWidth: Math.round(Math.min(SIZE_LIMITS.listWidth.max, Math.max(SIZE_LIMITS.listWidth.min, (x - l.left) / rem()))) }); }} />}
-            <div key={id} className={cn(STICKY, 'tk-slide-in')}>{editor}</div></div>
+            <div key={id} className={cn(STICKY, 'tk-slide-in')}>{editor}<CloseBar onClose={close} /></div></div>
             : wide && !idleFull && <Overview notes={visible} filter={filter} archive={archive} onOpen={(nid) => go(nid)} />}
         </div>)}
       {keep && !pane && id && <Dialog title="Note" wide onClose={close}>{editor}</Dialog>}
@@ -228,3 +243,8 @@ function Wall({ items, render, minRem, gapRem }: { items: Note[]; render: (n: No
   );
 }
 
+
+/** A red-tinted bar along the bottom of the editor column, just above the dock, that closes the editor (it sticks to the bottom while the editor scrolls). */
+function CloseBar({ onClose }: { onClose: () => void }) {
+  return <button type="button" onClick={onClose} className="sticky bottom-0 z-10 mt-3 flex w-full items-center justify-center gap-2 rounded-theme border border-bad/40 bg-bad/15 py-2.5 text-sm font-medium text-bad backdrop-blur transition-colors hover:bg-bad/25" aria-label="Close the editor"><X size={16} />Close the editor</button>;
+}

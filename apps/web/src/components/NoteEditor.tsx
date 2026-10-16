@@ -12,7 +12,7 @@ import { TagPicker } from './TagPicker.tsx';
 import { AutoText } from './AutoText.tsx';
 import { titleOverflow } from '../lib/title.ts';
 import { recallNote, rememberNote } from '../lib/cache.ts';
-import { takeEditorFocus } from '../lib/focus.ts';
+import { takeEditorFocus, takeTypeAhead, peekTypeAhead } from '../lib/focus.ts';
 
 type Save = 'saved' | 'saving' | 'dirty' | 'offline' | 'conflict';
 type Meta = Pick<Note, 'pinned' | 'archived' | 'trashed' | 'onList' | 'dueDate' | 'percentDone' | 'tags'>;
@@ -42,7 +42,9 @@ export function NoteEditor({ id, onBack, onGone, onOpenNote, startPicking, onPic
 function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { note: Note; onBack?: () => void; onGone: () => void; onOpenNote: (id: string) => void; startPicking?: boolean; onPicked?: () => void }) {
   const settings = useStore((s) => s.settings);
   const replaceNote = useStore((s) => s.replaceNote);
-  const [title, setTitle] = useState(note.title);
+  // letters typed into the add box before this editor existed (see lib/focus.ts) are already in its title
+  const early = useRef<string | null>(null); if (early.current === null) early.current = peekTypeAhead(note.id); // (only looked at here: it is taken once this editor is really on screen)
+  const [title, setTitle] = useState(note.title + early.current);
   const [text, setText] = useState(note.text);
   const [noteType, setNoteType] = useState(note.noteType);
   const [meta, setMeta] = useState<Meta>(metaOf(note));
@@ -95,6 +97,16 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
     setStatus((s) => (s === 'conflict' ? s : 'dirty'));
     timer.current = window.setTimeout(() => void flush(), now ? 0 : Math.max(0, Math.min(700, firstTyped.current + 4000 - Date.now())));
   };
+
+  // ... and letters that arrive after it is on screen are added to the end of the title
+  const titleNow = useRef(title); titleNow.current = title;
+  useEffect(() => {
+    const apply = () => { const s = takeTypeAhead(note.id); if (s) { const t = titleNow.current + s; titleNow.current = t; setTitle(t); typed({ title: t }); } };
+    const had = early.current ?? '', now = takeTypeAhead(note.id);
+    if (now.length > had.length) { const t = titleNow.current + now.slice(had.length); titleNow.current = t; setTitle(t); typed({ title: t }); } else if (had) typed({ title: titleNow.current });
+    window.addEventListener('tk:typeahead', apply);
+    return () => window.removeEventListener('tk:typeahead', apply);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // save what is pending when leaving the note, hiding the tab or closing the window (set up once: nothing above may change on a re-render)
   useEffect(() => {
@@ -150,7 +162,7 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
 
       <AutoText ref={titleEl} className="input !min-h-12 resize-none !py-2.5 !text-lg font-semibold" aria-label="Title" placeholder="Title (Enter starts a new line)" value={title} readOnly={ro}
         onChange={(e) => {
-          const o = titleOverflow(e.target.value, text);
+          const o = titleOverflow(e.target.value, text, e.target.selectionStart);
           if (!o) { setTitle(e.target.value); typed({ title: e.target.value }); return; }
           setTitle(o.title); setText(o.text); setEditing(true); caret.current = o.caret; typed({ title: o.title, text: o.text, autoTitle: true }); // too long for a title: it goes into the description and typing goes on there
         }} />
