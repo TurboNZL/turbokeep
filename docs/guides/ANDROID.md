@@ -27,7 +27,7 @@ Settings > This app > **Pair a phone** (on a computer, signed in) makes a **pair
 In any app, **Share > TurboKeep** adds the shared text to your list.
 
 ## Behind Cloudflare Access
-The app's page signs in to Cloudflare Access in the normal way and keeps its cookie, and the widget borrows that cookie. When the cookie runs out the widget stops until you open the app, unless you give the app a **service token** on the address screen (Settings > This app > Change server): Client ID and Client Secret of a token with a *Service Auth* policy ([CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md)).
+The app's page signs in to Cloudflare Access in the normal way and keeps its cookie, and the widget borrows that cookie. When the cookie runs out the widget stops until you open the app, unless you give the app a **service token** on the address screen (Settings > This app > Change server): Client ID and Client Secret of a token with a *Service Auth* policy ([CLOUDFLARE_TUNNEL.md](CLOUDFLARE_TUNNEL.md)). If the address screen says Access *sent the sign-in page instead of accepting the service token*, the token is fine but the Access application protecting **this** address (each hostname has its own; another app's policy does not carry over) has no policy with the action **Service Auth** that includes the token: add one, with an *Include* rule *Service Token* naming it.
 
 ## Good to know
 - Exports (Settings > Import & export) are saved into the phone's **Downloads** folder.
