@@ -8,7 +8,8 @@ import { cn } from '../lib/cn.ts';
 import { SORTS, canReorder, dueSoon, filterFromSearch, homeLink, hasTag, matchesFilter, positionBetween, sortKey, sortNotes, tasksInTags, viewParams, type HomeFilter } from '../lib/views.ts';
 import { excerpt, pokeWidgets } from '../lib/actions.ts';
 import { notesKey, takeNotes } from '../lib/prefetch.ts';
-import { cacheLevel, recall, remember } from '../lib/cache.ts';
+import { cacheLevel, recall, remember, rememberNote } from '../lib/cache.ts';
+import { markFresh } from '../lib/fresh.ts';
 import { SIZE_LIMITS } from '../lib/settings.ts';
 import { Divider } from '../components/Divider.tsx';
 import type { SortId } from '../lib/settings.ts';
@@ -59,7 +60,12 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
     try {
       const list = await (takeNotes(params) ?? api.notes(params)).catch(() => api.notes(params));
       memo.set(key, list);
-      if (shown.current === key) { setNotes(list); setLoaded(true); setError(''); }
+      if (shown.current === key) {
+        // what the server added since the copy we drew slides in; the rest stays where it is
+        const had = new Set(useStore.getState().notes.map((n) => n.id));
+        if (had.size) for (const n of list) if (!had.has(n.id)) markFresh(n.id);
+        setNotes(list); setLoaded(true); setError('');
+      }
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not load'); }
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { shown.current = key; setNotes(memo.get(key) ?? []); setLoaded(memo.has(key)); void load(); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -70,14 +76,16 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
     if (!loaded || cacheLevel() !== 'high') return;
     const t = window.setTimeout(() => {
       if (!archive) { const p = viewParams({ scope: 'list' }, true, tasksInTags(settings.countTasks, true)); void api.notes(p).then((l) => remember(`notes:${notesKey(p)}`, l), () => {}); }
-      for (const n of useStore.getState().notes.slice(0, 20)) void api.noteOrNull(n.id).then((d) => d && remember(`note:${n.id}`, d, false));
+      for (const n of useStore.getState().notes.slice(0, 20)) void api.noteOrNull(n.id).then((d) => d && rememberNote(d));
     }, 1200);
     return () => window.clearTimeout(t);
   }, [loaded, key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // the open note is kept in the store: coming back from Settings (or a reload) shows it again on a wide screen
+  // what each page showed last is kept (setPage below), so another page and back finds it as it was
   useEffect(() => { if (id) setOpenNote(id); }, [id, setOpenNote]);
-  useEffect(() => { if (!id && openNote && wide) nav(homeLink(openNote, filter, base), { replace: true }); }, [id, openNote, wide]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setPage = useStore((s) => s.setPage);
+  const search = typeof location !== 'undefined' ? location.search : '';
+  useEffect(() => { setPage(archive ? 'archive' : 'home', id ?? null, search); }, [id, search, archive, setPage]);
 
   const close = useCallback(() => { setOpenNote(null); go(null, {}, false); }, [go, setOpenNote]);
   const closeIfOpen = useCallback((nid: string) => { if (useStore.getState().openNote === nid) { setOpenNote(null); nav(homeLink(null, filter, base), { replace: true }); } }, [setOpenNote, nav, base, filter.scope, filter.tag, filter.q]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -97,9 +105,9 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   const heading = archive ? `Archive · ${filter.scope === 'list' && !filter.tag && !filter.q ? 'Old Tasks' : name}` : name;
 
   // the Archive's own tag column: only the tags something archived was sent to
-  const [archiveTags, setArchiveTags] = useState<TagInfo[]>([]);
+  const [archiveTags, setArchiveTags] = useState<TagInfo[]>(() => recall<TagInfo[]>(`tags:archived:${withTasks}`) ?? []);
   const archivedCount = archive ? notes.length : 0;
-  useEffect(() => { if (archive) api.tags('archived', withTasks).then((t) => setArchiveTags(t.filter((x) => x.count > 0)), () => {}); }, [archive, archivedCount, withTasks]);
+  useEffect(() => { if (archive) api.tags('archived', withTasks).then((t) => { remember(`tags:archived:${withTasks}`, t); setArchiveTags(t); }, () => {}); }, [archive, archivedCount, withTasks]);
 
   const added = useCallback((n: Note) => { upsertNote(excerpt(n)); }, [upsertNote]);
 
@@ -120,7 +128,9 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
     const props = { n, variant: keep ? 'card' as const : 'row' as const, active: n.id === id, onOpen: () => go(n.id), ...item.rowProps(n) };
     return draggable ? <Sortable key={n.id} id={n.id}>{(drag) => <ItemRow {...props} drag={drag} />}</Sortable> : <ItemRow key={n.id} {...props} />;
   };
-  const listEl = keep ? <Wall items={visible} render={row} minRem={settings.cardWidth} /> : <ul className="space-y-1.5">{visible.map(row)}</ul>;
+  const swapped = useRef(false); // the first list drawn comes in with the page; later ones (another tag, tab or page) swap in
+  useEffect(() => { swapped.current = true; }, []);
+  const listEl = keep ? <Wall items={visible} render={row} minRem={settings.cardWidth} gapRem={settings.cardGap} /> : <ul className="space-y-1.5">{visible.map(row)}</ul>;
 
   const listRef = useRef<HTMLElement>(null);
   const rem = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
@@ -137,11 +147,11 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
           : <Select className="!w-44 shrink-0 text-sm" aria-label={`Sort ${name}`} value={sort} onChange={(v) => updateSettings({ sorts: { ...settings.sorts, [skey]: v as SortId } })} options={SORTS.map((x) => ({ value: x.id, label: x.label, icon: x.id === sort ? <ArrowDownUp size={14} className="shrink-0 text-accent" /> : undefined }))} />}
       </div>
       {soon && <p className="-mt-1 text-xs text-muted">The next five things with a date, and everything else due before the end of the day, week, month or 3 months they fall in. Overdue ones come first.</p>}
-      {!filter.q && !archive && !soon && <Composer key={filter.tag ?? ''} tag={filter.tag} autoFocus={wide && !id} onAdded={added} />}
+      {!filter.q && !archive && !soon && <Composer key={filter.tag ?? ''} tag={filter.tag} autoFocus={wide && !id} onAdded={added} onPopup={settings.popupOnType && keep ? (n) => go(n.id) : undefined} />}
       {filter.q && <><p className="text-sm text-muted">Results for “{filter.q}” on {archive ? 'the Archive' : 'Home'} <button className="underline" onClick={() => go(id, { q: undefined })}>clear</button></p><OtherPiles q={filter.q} from={archive ? 'archive' : 'home'} seed={notes.length} /></>}
       {error && <p role="alert" className="text-sm text-bad">{error}</p>}
       {!wide && !id && openNote && <button className="chip inline-flex items-center gap-1.5" onClick={() => nav(homeLink(openNote, filter, base))}><Pencil size={12} />Continue editing: {openTitle}</button>}
-      {draggable ? <SortableList ids={visible.map((n) => n.id)} grid={keep} onMove={(a, b, c) => void move(a, b, c)}>{listEl}</SortableList> : listEl}
+      <div key={key} className={cn(swapped.current && 'tk-swap')}>{draggable ? <SortableList ids={visible.map((n) => n.id)} grid={keep} onMove={(a, b, c) => void move(a, b, c)}>{listEl}</SortableList> : listEl}</div>
       {loaded && !visible.length && !error && (
         <p className="py-8 text-center text-sm text-muted">{filter.q ? 'Nothing matches.' : archive ? 'Nothing archived here.' : filter.tag ? 'Nothing under this tag yet. Send a note to it.' : filter.scope === 'list' ? 'Your list is empty. Type something above.' : filter.scope === 'due' ? 'Nothing has a date yet.' : 'Nothing here.'}</p>)}
       {draggable && <p className="text-center text-xs text-muted">Drag to reorder. On a touch screen, drag the grip. Tap an item to read it, the pencil to edit it. Right-click or hold for more.</p>}
@@ -151,26 +161,26 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   const send = sp.get('send') === '1'; // the widget's "Save to memory": the item opens with the tag picker ready
   const editor = id && <NoteEditor key={id} id={id} startPicking={send} onPicked={() => nav(homeLink(id, filter, base), { replace: true })} onBack={close} onGone={() => { setOpenNote(null); go(null, {}, true); }} onOpenNote={(other) => go(other)} />;
   const rail = (
-    <TagRail tags={railTags(archive ? archiveTags : tags)} archive={archive} filter={filter} counts={{ list: !archive && filter.scope === 'list' && !filter.tag && !filter.q && loaded ? visible.length : null }}
+    <TagRail tags={railTags(archive ? archiveTags : tags, tags)} archive={archive} filter={filter} counts={{ list: !archive && filter.scope === 'list' && !filter.tag && !filter.q && loaded ? visible.length : null }}
       onScope={(s) => go(id, { scope: s, tag: undefined, q: undefined })} onTag={(t) => go(id, { tag: t || undefined, scope: 'list', q: undefined })} onEditTag={setEditingTag} />
   );
 
   const panel = (
     <div className="relative min-w-0">
       <Divider side="left" lit={foreign} label="Drag to change the width of the editor" onSize={(x, box) => updateSettings({ paneWidth: Math.round(Math.min(SIZE_LIMITS.paneWidth.max, Math.max(SIZE_LIMITS.paneWidth.min, (box.right - x) / rem()))) })} />
-      <div className={STICKY}>{editor}</div>
+      <div key={id} className={cn(STICKY, 'tk-slide-in')}>{editor}</div>
     </div>);
   return (
     <>
       {keep ? (
-        <div className={cn('grid grid-cols-[minmax(0,1fr)] gap-4', pane && id ? 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)_minmax(18rem,var(--pane-w,28rem))]' : 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)]')}>{rail}{list}{pane && id && panel}</div>
+        <div className={cn('grid grid-cols-[minmax(0,1fr)] gap-4', pane && id ? 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)_minmax(16rem,min(var(--pane-w,28rem),85%))]' : 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)]')}>{rail}{list}{pane && id && panel}</div>
       ) : (
-        <div className={cn('grid grid-cols-[minmax(0,1fr)] gap-4', idleFull ? 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)]' : 'md:grid-cols-[minmax(17rem,min(var(--list-w,26rem),70%))_minmax(0,1fr)] lg:grid-cols-[var(--rail-w,11rem)_minmax(17rem,min(var(--list-w,28rem),70%))_minmax(0,1fr)]')}>
+        <div className={cn('grid grid-cols-[minmax(0,1fr)] gap-4', idleFull ? 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)]' : 'md:grid-cols-[minmax(12rem,min(var(--list-w,26rem),85%))_minmax(0,1fr)] lg:grid-cols-[var(--rail-w,11rem)_minmax(12rem,min(var(--list-w,28rem),85%))_minmax(0,1fr)]')}>
           {(wide || !id) && <div className="min-w-0 md:col-span-2 lg:col-span-1">{rail}</div>}
           {(wide || !id) && list}
           {id ? <div className="relative min-w-0 md:col-start-2 md:row-start-2 lg:col-start-3 lg:row-start-1">
             {wide && <Divider side="left" lit={foreign} label="Drag to change the width of the list" onSize={(x) => { const l = listRef.current?.getBoundingClientRect(); if (l) updateSettings({ listWidth: Math.round(Math.min(SIZE_LIMITS.listWidth.max, Math.max(SIZE_LIMITS.listWidth.min, (x - l.left) / rem()))) }); }} />}
-            <div className={STICKY}>{editor}</div></div>
+            <div key={id} className={cn(STICKY, 'tk-slide-in')}>{editor}</div></div>
             : wide && !idleFull && <Overview notes={visible} filter={filter} archive={archive} onOpen={(nid) => go(nid)} />}
         </div>)}
       {keep && !pane && id && <Dialog title="Note" wide onClose={close}>{editor}</Dialog>}
@@ -200,20 +210,20 @@ function Overview({ notes, filter, archive, onOpen }: { notes: Note[]; filter: H
  * The Keep wall: cards in as many columns as fit, each column filled on its own so the cards sit against each other (no gaps from a tall neighbour).
  * Item 1 goes to the first column, item 2 to the second ... then back to the first, so the order still reads left to right.
  */
-function Wall({ items, render, minRem }: { items: Note[]; render: (n: Note) => ReactNode; minRem: number }) {
+function Wall({ items, render, minRem, gapRem }: { items: Note[]; render: (n: Note) => ReactNode; minRem: number; gapRem: number }) {
   const box = useRef<HTMLDivElement>(null);
   const [cols, setCols] = useState(1);
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
-    const fit = () => { const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16, gap = 0.75 * rem; setCols(Math.max(1, Math.floor((el.clientWidth + gap) / (minRem * rem + gap)))); };
+    const fit = () => { const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16, gap = gapRem * rem; setCols(Math.max(1, Math.floor((el.clientWidth + gap) / (minRem * rem + gap)))); };
     fit();
     const ro = new ResizeObserver(fit); ro.observe(el);
     return () => ro.disconnect();
-  }, [minRem]);
+  }, [minRem, gapRem]);
   return (
-    <div ref={box} className="flex items-start gap-3">
-      {Array.from({ length: cols }, (_, c) => <ul key={c} className="min-w-0 flex-1 space-y-3">{items.filter((_n, i) => i % cols === c).map(render)}</ul>)}
+    <div ref={box} className="flex items-start" style={{ gap: `${gapRem}rem` }}>
+      {Array.from({ length: cols }, (_, c) => <ul key={c} className="flex min-w-0 flex-1 flex-col" style={{ gap: `${gapRem}rem` }}>{items.filter((_n, i) => i % cols === c).map(render)}</ul>)}
     </div>
   );
 }

@@ -207,6 +207,11 @@ export function updateNote(db: DB, userId: number, id: string, i: NoteInput, bas
       // typing a title of your own ends the app's: it stays an app title only while the title is left as it was (or the page says so)
       auto_title: i.autoTitle !== undefined ? +!!i.autoTitle : i.title !== undefined && String(i.title).slice(0, 1000) !== cur.title ? 0 : cur.auto_title,
     };
+    // archiving a task that has tags sends it to them (it becomes a note under its tags), unless one of its tags says its tasks stay tasks
+    if (next.archived === 1 && cur.archived === 0 && next.on_list === 1) {
+      const titles = i.tags ? i.tags.map(cleanTag).filter(Boolean) : tagTitles(db, id);
+      if (titles.length && !titles.some((t) => get(db, 'select 1 x from tags where user_id = ? and title = ? and keep_tasks = 1', userId, t))) next.on_list = 0;
+    }
     run(db, 'update notes set title=?, text=?, note_type=?, pinned=?, archived=?, trashed=?, on_list=?, due_date=?, percent_done=?, position=?, updated_at=?, auto_title=? where id=?',
       next.title, next.text, next.note_type, next.pinned, next.archived, next.trashed, next.on_list, next.due_date, next.percent_done, next.position, content ? now() : cur.updated_at, next.auto_title, id);
     if (i.tags) setNoteTags(db, userId, id, i.tags);
@@ -256,20 +261,20 @@ export function emptyTrash(db: DB, userId: number): number {
  * `withTasks` (a setting of the page) counts the tasks that carry the tag too.
  */
 export function listTags(db: DB, userId: number, pile: 'live' | 'archived' = 'live', withTasks = false) {
-  return all(db, `select t.title, t.emoji, t.color, count(n.id) as count from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id and n.trashed = 0 and n.archived = ?${withTasks ? '' : ' and n.on_list = 0'}
-    where t.user_id = ? group by t.id order by t.title`, pile === 'archived' ? 1 : 0, userId).map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, count: Number(r.count) }));
+  return all(db, `select t.title, t.emoji, t.color, t.keep_tasks, count(n.id) as count from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id and n.trashed = 0 and n.archived = ?${withTasks ? '' : ' and n.on_list = 0'}
+    where t.user_id = ? group by t.id order by t.title`, pile === 'archived' ? 1 : 0, userId).map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, count: Number(r.count), ...(r.keep_tasks ? { keepTasks: true } : {}) }));
 }
 /** For the tag manager: every tag wherever its notes are (on Home as notes, on the task list, in the archive, in the bin), and the parents that only exist as the front of a sub-tag's name. */
 export function listTagsEverywhere(db: DB, userId: number) {
-  const rows = all(db, `select t.title, t.emoji, t.color,
+  const rows = all(db, `select t.title, t.emoji, t.color, t.keep_tasks,
       coalesce(sum(n.trashed = 0 and n.archived = 0 and n.on_list = 0), 0) as notes, coalesce(sum(n.trashed = 0 and n.archived = 0 and n.on_list = 1), 0) as tasks,
       coalesce(sum(n.trashed = 0 and n.archived = 1), 0) as archived, coalesce(sum(n.trashed = 1), 0) as trashed
     from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id where t.user_id = ? group by t.id order by t.title`, userId);
-  return rows.map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, notes: Number(r.notes), tasks: Number(r.tasks), archived: Number(r.archived), trashed: Number(r.trashed) }));
+  return rows.map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, notes: Number(r.notes), tasks: Number(r.tasks), archived: Number(r.archived), trashed: Number(r.trashed), ...(r.keep_tasks ? { keepTasks: true } : {}) }));
 }
 export const CUSTOM = /^:[0-9a-f]{12}:$/;
 /** The look of a tag: at most one emoji (or a short symbol) and a six-digit colour without '#'; empty clears it. */
-export function styleTag(db: DB, userId: number, title: string, style: { emoji?: unknown; color?: unknown }) {
+export function styleTag(db: DB, userId: number, title: string, style: { emoji?: unknown; color?: unknown; keepTasks?: unknown }) {
   let src = get(db, 'select id, emoji, color from tags where user_id = ? and title = ?', userId, title);
   // a parent such as `work` has no row of its own while only `work.reports` carries notes: it gets one when it is given a look
   if (!src && get(db, "select 1 x from tags where user_id = ? and substr(title, 1, ?) = ?", userId, title.length + 1, `${title}.`)) { ensureTag(db, userId, title); src = get(db, 'select id, emoji, color from tags where user_id = ? and title = ?', userId, title); }
@@ -285,6 +290,7 @@ export function styleTag(db: DB, userId: number, title: string, style: { emoji?:
     if (color && !/^[0-9a-f]{6}$/.test(color)) throw new HttpError(400, 'A colour is six hex digits, like ff8800');
   }
   run(db, 'update tags set emoji = ?, color = ? where id = ?', emoji, color, src.id);
+  if (style.keepTasks !== undefined) run(db, 'update tags set keep_tasks = ? where id = ?', +!!style.keepTasks, src.id);
 }
 /** Renames a tag and everything under it (`work` -> `job` also makes `work.reports` into `job.reports`); onto an existing tag it merges. */
 export function renameTag(db: DB, userId: number, from: string, to: string) {

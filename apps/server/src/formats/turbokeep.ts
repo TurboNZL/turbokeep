@@ -19,7 +19,7 @@ export interface TkNote {
   id: string; title: string; text: string; noteType: string; pinned: boolean; archived: boolean; trashed: boolean; tags: string[]; createdAt: string; updatedAt: string;
   onList: boolean; dueDate: string | null; percentDone: number; position: number; autoTitle?: boolean;
 }
-export interface TkTagStyle { title: string; emoji: string; color: string }
+export interface TkTagStyle { title: string; emoji: string; color: string; keepTasks?: boolean }
 export interface TkEmoji { id: string; name: string; mime: string; data: string }
 export interface TkBundle { notes: TkNote[]; /** tags that have an emoji or a colour */ tagStyles: TkTagStyle[]; /** imported emoji (base64 PNG or WebP) */ customEmoji?: TkEmoji[] }
 
@@ -81,7 +81,7 @@ export function parseTurboKeep(data: Uint8Array): { bundle: TkBundle; warnings: 
   if (Array.isArray(j.relations) && j.relations.length) warnings.push(`${j.relations.length} task relation${j.relations.length === 1 ? '' : 's'} in this backup were left out (TurboKeep no longer has them).`);
   if (lost) warnings.push(`${lost} task${lost === 1 ? '' : 's'} had reminders, repeats, a priority or start/end dates, which TurboKeep no longer keeps.`);
   const tagStyles: TkTagStyle[] = (Array.isArray(j.tagStyles) ? j.tagStyles : []).filter((t: any) => t && typeof t.title === 'string' && t.title).map((t: any) => ({
-    title: String(t.title).slice(0, 200), emoji: typeof t.emoji === 'string' ? (/^:[0-9a-f]{12}:$/.test(t.emoji) ? t.emoji : [...t.emoji].slice(0, 4).join('')) : '', color: /^[0-9a-f]{6}$/i.test(String(t.color ?? '')) ? String(t.color).toLowerCase() : '' }));
+    title: String(t.title).slice(0, 200), emoji: typeof t.emoji === 'string' ? (/^:[0-9a-f]{12}:$/.test(t.emoji) ? t.emoji : [...t.emoji].slice(0, 4).join('')) : '', color: /^[0-9a-f]{6}$/i.test(String(t.color ?? '')) ? String(t.color).toLowerCase() : '', keepTasks: t.keepTasks === true }));
   const customEmoji: TkEmoji[] = (Array.isArray(j.customEmoji) ? j.customEmoji : []).filter((e: any) => e && /^[0-9a-f]{12}$/.test(String(e.id)) && typeof e.data === 'string').slice(0, 300).map((e: any) => ({ id: String(e.id), name: str(e.name, 60), mime: str(e.mime, 40), data: e.data }));
   return { bundle: { notes, tagStyles, customEmoji }, warnings };
 }

@@ -13,13 +13,14 @@ export function TagDialog({ tag, onClose, onDone, implied }: { tag: TagInfo; onC
   const [emoji, setEmoji] = useState(tag.emoji);
   const [color, setColor] = useState(tag.color);
   const [picking, setPicking] = useState(false);
+  const [keep, setKeep] = useState(!!tag.keepTasks);
   const [error, setError] = useState('');
   async function save(e: React.FormEvent) {
     e.preventDefault(); setError('');
     try {
       const to = name.trim();
       if (to && to !== tag.title) await api.renameTag(tag.title, to);
-      await api.styleTag(to || tag.title, { emoji, color });
+      await api.styleTag(to || tag.title, { emoji, color, keepTasks: keep });
       onDone();
     } catch (err) { setError((err as Error).message); }
   }
@@ -40,6 +41,7 @@ export function TagDialog({ tag, onClose, onDone, implied }: { tag: TagInfo; onC
             {color && <button type="button" className="btn btn-ghost text-xs" onClick={() => setColor('')}>No colour</button>}
           </div>
         </div>
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={keep} onChange={(e) => setKeep(e.target.checked)} /><span>Archived tasks stay tasks. (Off: when you archive a task that has this tag, it is sent to the tag, so it is found there.)</span></label>
         {error && <div role="alert" className="rounded-theme bg-bad/15 p-2.5 text-sm text-bad">{error}</div>}
         <div className="flex flex-wrap gap-2"><button className="btn btn-accent">Save</button><button type="button" className="btn" onClick={onClose}>Cancel</button>
           <button type="button" className="btn ml-auto text-bad" onClick={async () => { if (confirm(implied ? `Remove "${tag.title}" and every tag under it from all their notes?` : `Remove the tag "${tag.title}" from all its notes? (Tags under it stay.)`)) { await api.deleteTag(tag.title, implied); onDone(); } }}>Delete tag</button></div>

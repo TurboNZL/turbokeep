@@ -31,6 +31,32 @@ export function recall<T>(key: string): T | undefined {
   return undefined;
 }
 
+/**
+ * An opened item's copy. In memory at every level but Off; on the device only at High (at most NOTE_KEEP of them, the oldest dropped first), so opening an item you
+ * have opened before, or that was fetched ahead, shows at once even after a reload.
+ */
+const NOTE_KEEP = 400, INDEX = PREFIX + 'noteindex';
+export function rememberNote(note: { id: string }) {
+  if (level === 'off') return;
+  mem.set(`note:${note.id}`, note);
+  if (level !== 'high') return;
+  try {
+    const s = JSON.stringify(note);
+    if (s.length > 150_000) return;
+    const index: string[] = JSON.parse(localStorage.getItem(INDEX) ?? '[]').filter((k: string) => k !== note.id);
+    index.push(note.id);
+    while (index.length > NOTE_KEEP) localStorage.removeItem(`${PREFIX}note:${index.shift()}`);
+    localStorage.setItem(PREFIX + `note:${note.id}`, s); localStorage.setItem(INDEX, JSON.stringify(index));
+  } catch { /* full: the copy in memory still works */ }
+}
+export function recallNote<T>(id: string): T | undefined {
+  if (level === 'off') return undefined;
+  if (mem.has(`note:${id}`)) return mem.get(`note:${id}`) as T;
+  if (level !== 'high') return undefined;
+  try { const s = localStorage.getItem(`${PREFIX}note:${id}`); if (s) { const v = JSON.parse(s) as T; mem.set(`note:${id}`, v); return v; } } catch { /* damaged copy */ }
+  return undefined;
+}
+
 export function clearSaved() {
   try { for (const k of Object.keys(localStorage)) if (k.startsWith(PREFIX)) localStorage.removeItem(k); } catch { /* nothing to clear */ }
 }

@@ -7,6 +7,7 @@ import { cn } from '../lib/cn.ts';
 import { TagPicker } from './TagPicker.tsx';
 import { AutoText } from './AutoText.tsx';
 import { markFresh } from '../lib/fresh.ts';
+import { wantEditorFocus } from '../lib/focus.ts';
 import { titleOverflow } from '../lib/title.ts';
 
 /** The Add button elsewhere in the app asks for the focus with this (it works from Settings too: the request waits until Home is on screen). */
@@ -18,7 +19,7 @@ export function requestCompose() { wanted = true; window.dispatchEvent(new Event
  * typed is kept, so nothing is lost. "Send to tags" files it straight away under as many tags as you like instead (it leaves the list and is found
  * by its tags). Ctrl+Enter in the description adds it too. Inside a tag, new things start with that tag.
  */
-export function Composer({ tag, autoFocus, onAdded }: { tag?: string; autoFocus?: boolean; onAdded: (n: Note) => void }) {
+export function Composer({ tag, autoFocus, onAdded, onPopup }: { tag?: string; autoFocus?: boolean; onAdded: (n: Note) => void; /** Keep views with "open on the first letter": called with the item made from that letter, to open it */ onPopup?: (n: Note) => void }) {
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [picking, setPicking] = useState(false);
@@ -41,6 +42,16 @@ export function Composer({ tag, autoFocus, onAdded }: { tag?: string; autoFocus?
     window.addEventListener('tk:compose', focus);
     return () => window.removeEventListener('tk:compose', focus);
   }, []);
+
+  /** Keep views: the first letter makes the item and opens it at once (with the cursor after that letter in its title) */
+  const popup = async (first: string) => {
+    sending.current = true; setBusy(true);
+    try {
+      const n = await api.createNote({ title: first, text: '', tags: tag ? [tag] : [], onList: !tag });
+      void useStore.getState().refreshMeta(); pokeWidgets(); markFresh(n.id); onAdded(n); wantEditorFocus(n.id); onPopup?.(n);
+    } catch (e) { toast((e as Error).message || 'Could not add that', { tone: 'bad' }); }
+    finally { sending.current = false; setBusy(false); }
+  };
 
   /** keep=false: the item goes to the tags only (not on the list). Without tags it goes on the list. */
   const commit = useCallback(async (extraTags: string[] = [], keepOnList = true) => {
@@ -71,7 +82,7 @@ export function Composer({ tag, autoFocus, onAdded }: { tag?: string; autoFocus?
       onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node) && !pickingRef.current && !pressing.current) void commit(); }}>
       <div className="flex items-center gap-2">
         <AutoText ref={titleEl} className="input !min-h-11 max-h-48 flex-1 resize-none !py-2.5 !text-base" aria-label="Add something" placeholder={tag ? `Add to ${tag.split('.').pop()}…` : 'Add something…'} value={title} autoFocus={autoFocus}
-          enterKeyHint="done" autoComplete="off" onChange={(e) => { const o = titleOverflow(e.target.value, text); if (o) { setTitle(o.title); setText(o.text); caret.current = o.caret; auto.current = true; } else { setTitle(e.target.value); auto.current = false; } }}
+          enterKeyHint="done" autoComplete="off" onChange={(e) => { if (onPopup && !title && !text && e.target.value.trim() && !sending.current) { void popup(e.target.value); return; } const o = titleOverflow(e.target.value, text); if (o) { setTitle(o.title); setText(o.text); caret.current = o.caret; auto.current = true; } else { setTitle(e.target.value); auto.current = false; } }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void commit().then(() => titleEl.current?.focus()); } }} />
         <button type="button" tabIndex={-1} className="btn btn-accent !min-h-11 !px-3" aria-label="Add" title="Add (Enter)" disabled={busy || (!title.trim() && !text.trim())} onClick={() => void commit().then(() => titleEl.current?.focus())}><Plus size={18} /></button>
       </div>

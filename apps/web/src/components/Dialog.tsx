@@ -22,7 +22,7 @@ export function Dialog({ title, onClose, children, wide }: { title: string; onCl
   // in the body, not inside the page: the page slides in with an animation, which makes its own stacking layer and left the top of a window under the bar
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/50 p-3 md:p-8" onMouseDown={(e) => e.target === e.currentTarget && close.current()}>
-      <div ref={box} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className={`bt-window w-full outline-none ${wide ? 'max-w-3xl' : 'max-w-xl'}`}>
+      <div ref={box} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className={`bt-window tk-pop w-full outline-none ${wide ? 'max-w-3xl' : 'max-w-xl'}`}>
         <div className="bt-titlebar flex items-center justify-between px-4 py-2.5"><h2 className="text-sm font-semibold">{title}</h2><button type="button" className="bt-close" aria-label="Close" onClick={() => close.current()}><X size={16} /></button></div>
         <div className="bt-body space-y-4 p-4">{children}</div>
       </div>

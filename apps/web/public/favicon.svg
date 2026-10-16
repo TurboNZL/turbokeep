@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="156.28 158.4 199.45 199.45" width="512" height="512" role="img" aria-label="TurboKeep">
+  <defs><linearGradient id="turbokeep-sym" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffdb81"/><stop offset="1" stop-color="#b97700"/></linearGradient></defs>
+  <path d="M166.96,264.48L196.64,234.8L234.8,272.96L315.36,183.92L345.04,213.6L234.8,332.32Z" fill="url(#turbokeep-sym)"/>
+</svg>

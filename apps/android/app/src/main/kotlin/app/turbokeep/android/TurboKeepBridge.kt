@@ -28,6 +28,10 @@ class TurboKeepBridge(private val context: Context, private val changeServer: ()
     @JavascriptInterface fun saveToken(token: String) { prefs.token = token; TasksWidgetProvider.refreshAll(context) }
     @JavascriptInterface fun hasToken(): Boolean = prefs.token.isNotEmpty()
     @JavascriptInterface fun refreshWidgets() { TasksWidgetProvider.refreshAll(context) }
+    /** Settings > This app > Android app: the widget's settings window, opened from the page (it has no widget to belong to, so it holds the shared choices: text size, spacing, buttons, order) */
+    @JavascriptInterface fun openWidgetSettings() { main.post { context.startActivity(Intent(context, WidgetSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+    /** the window that chooses the note of a one-note widget, when the phone has one */
+    @JavascriptInterface fun hasNoteWidget(): Boolean = NoteWidgetProvider.ids(context).isNotEmpty()
     @JavascriptInterface fun changeServer() { main.post { changeServer.invoke() } }
 
     @JavascriptInterface fun checkUpdate() { AppUpdater.check(context) }

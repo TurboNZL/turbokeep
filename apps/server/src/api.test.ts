@@ -408,6 +408,15 @@ describe('tag looks, list excerpts, compression', () => {
     expect((await json('GET', '/api/tags')).body[0].count).toBe(1);
     expect((await json('GET', '/api/tags?tasks=1')).body[0].count).toBe(2);
   });
+  it('archiving a task that has tags sends it to them, unless a tag says its tasks stay tasks', async () => {
+    const a = (await json('POST', '/api/notes', { title: 'a', tags: ['plain'], onList: true })).body, b = (await json('POST', '/api/notes', { title: 'b', tags: ['keeper'], onList: true })).body;
+    const c = (await json('POST', '/api/notes', { title: 'c', onList: true })).body;
+    await json('PATCH', '/api/tags', { title: 'keeper', keepTasks: true });
+    expect((await json('PATCH', `/api/notes/${a.id}`, { archived: true })).body).toMatchObject({ archived: true, onList: false });
+    expect((await json('PATCH', `/api/notes/${b.id}`, { archived: true })).body).toMatchObject({ archived: true, onList: true });
+    expect((await json('PATCH', `/api/notes/${c.id}`, { archived: true })).body).toMatchObject({ archived: true, onList: true }); // no tags: stays a task
+    expect((await json('GET', '/api/tags')).body.find((t: any) => t.title === 'keeper').keepTasks).toBe(true);
+  });
   it('exclude: and include: are -tag: and tag:', async () => {
     await json('POST', '/api/notes', { title: 'a milk', tags: ['x'] }); await json('POST', '/api/notes', { title: 'b milk', tags: ['y'] });
     const titles = async (q: string) => (await json('GET', `/api/notes?q=${encodeURIComponent(q)}`)).body.map((n: any) => n.title).sort();

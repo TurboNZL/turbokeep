@@ -219,10 +219,13 @@ export function AppearancePreview() {
   );
 }
 
-const SIZES: { key: 'railWidth' | 'listWidth' | 'cardWidth' | 'paneWidth'; label: string; hint: string }[] = [
+const SIZES: { key: 'railWidth' | 'listWidth' | 'cardWidth' | 'paneWidth' | 'railEmoji' | 'railText' | 'cardGap'; label: string; hint: string }[] = [
   { key: 'railWidth', label: 'Tags column', hint: 'Tasks, All notes, Due soon and your tags, on the left of Home and the Archive.' },
   { key: 'listWidth', label: 'List of items', hint: 'The column of items next to the open note (the most it grows to).' },
   { key: 'paneWidth', label: 'Editor panel (Keep wall + panel)', hint: 'The width of the editor beside the cards. You can also drag the divider between them.' },
+  { key: 'railEmoji', label: 'Emoji in the tags column', hint: 'How big a tag\'s emoji is.' },
+  { key: 'railText', label: 'Names in the tags column', hint: 'How big the tag names are.' },
+  { key: 'cardGap', label: 'Gap between cards (Keep views)', hint: 'The space between the cards of the wall, both ways.' },
   { key: 'cardWidth', label: 'Keep card', hint: 'How wide a card of the Google Keep wall is at least: narrower cards fit more columns.' },
 ];
 
@@ -247,9 +250,10 @@ export function DivisionSizeSection() {
           {sizes.map((b) => <button key={b.id} type="button" role="radio" aria-checked={settings.buttonSize === b.id} onClick={() => updateSettings({ buttonSize: b.id })}
             className={cn('rounded-[calc(var(--radius)-3px)] px-3 py-1 text-xs font-medium', settings.buttonSize === b.id ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg')}>{b.label}</button>)}
         </div></div>
+      <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={settings.popupOnType} onChange={(e) => updateSettings({ popupOnType: e.target.checked })} /><span>Keep views: open the item (its window or panel) as soon as you type the first letter in the add box.</span></label>
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={settings.fullWhenIdle} onChange={(e) => updateSettings({ fullWhenIdle: e.target.checked })} /><span>Use the whole width for the list while nothing is open (the list view; the panel on the right comes back when you open an item).</span></label>
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={settings.dividerWhenForeign} onChange={(e) => updateSettings({ dividerWhenForeign: e.target.checked })} /><span>Show the divider between the list and the open item when that item is not under the tag the list is showing. (The divider can always be dragged to change the widths.)</span></label>
-      <button type="button" className="btn text-xs" disabled={!changed} onClick={() => updateSettings({ railWidth: DEFAULT_SETTINGS.railWidth, listWidth: DEFAULT_SETTINGS.listWidth, cardWidth: DEFAULT_SETTINGS.cardWidth, paneWidth: DEFAULT_SETTINGS.paneWidth })}>Back to the usual sizes</button>
+      <button type="button" className="btn text-xs" disabled={!changed} onClick={() => updateSettings({ railWidth: DEFAULT_SETTINGS.railWidth, listWidth: DEFAULT_SETTINGS.listWidth, cardWidth: DEFAULT_SETTINGS.cardWidth, paneWidth: DEFAULT_SETTINGS.paneWidth, railEmoji: DEFAULT_SETTINGS.railEmoji, railText: DEFAULT_SETTINGS.railText, cardGap: DEFAULT_SETTINGS.cardGap })}>Back to the usual sizes</button>
     </Section>
   );
 }

@@ -143,7 +143,7 @@ class TasksWidgetProvider : AppWidgetProvider() {
                 v.setTextViewText(R.id.detail_desc, item.text.ifBlank { "No description." })
                 v.setTextViewTextSize(R.id.detail_desc, TypedValue.COMPLEX_UNIT_SP, 13f * zoom)
                 v.setInt(R.id.detail_desc, "setMaxLines", linesFor(ctx, manager, id, zoom))
-                v.setTextViewText(R.id.detail_done, if (tag.isEmpty()) "Complete" else "Archive")
+                v.setTextViewText(R.id.detail_done, "Archive") // archiving is what finishing a task is called
                 v.setTextViewText(R.id.detail_send, if (tag.isEmpty()) "Send to tags" else "Send to tasks")
                 v.setOnClickPendingIntent(R.id.detail_text, opIntent(ctx, id, 6, "collapse", item.id))
                 v.setOnClickPendingIntent(R.id.detail_done, opIntent(ctx, id, 7, "done", item.id))

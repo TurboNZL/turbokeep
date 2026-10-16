@@ -2,7 +2,7 @@ import { api, type Note, type NotePatch } from './api.ts';
 import { useStore } from './store.ts';
 import { android } from './native.ts';
 import { copyText, noteLink } from './clip.ts';
-import { recall, remember } from './cache.ts';
+import { recallNote, rememberNote } from './cache.ts';
 
 /** The list only holds the start of each text (the server sends excerpts), so the editor does not put whole texts back into it. */
 export const excerpt = (n: Note): Note => (n.text.length > 400 ? { ...n, text: n.text.slice(0, 400) } : n);
@@ -26,7 +26,7 @@ export async function patchNote(id: string, patch: NotePatch): Promise<Note | nu
   try {
     const saved = await api.updateNote(id, patch);
     useStore.getState().replaceNote(excerpt(saved));
-    if (recall(`note:${id}`)) remember(`note:${id}`, saved, false); // an opened item's kept copy follows the change
+    if (recallNote(id)) rememberNote(saved); // an opened item's kept copy follows the change
     if (patch.tags || patch.archived || patch.trashed) void useStore.getState().refreshMeta();
     pokeWidgets();
     return saved;

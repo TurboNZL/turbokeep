@@ -17,16 +17,19 @@ interface NavItem { key: NavId; label: string; icon: LucideIcon; to: string; act
 function useNavItems(): NavItem[] {
   const { pathname } = useLocation();
   const order = useStore((s) => s.settings.navOrder);
+  const pages = useStore((s) => s.pages);
   const all: Record<NavId, NavItem> = {
-    home: { key: 'home', label: 'Home', icon: House, to: '/home', active: pathname.startsWith('/home') },
-    archive: { key: 'archive', label: 'Archive', icon: Archive, to: '/archive', active: pathname.startsWith('/archive') },
+    home: { key: 'home', label: 'Home', icon: House, to: back('/home', pages.home), active: pathname.startsWith('/home') },
+    archive: { key: 'archive', label: 'Archive', icon: Archive, to: back('/archive', pages.archive), active: pathname.startsWith('/archive') },
     bin: { key: 'bin', label: 'Bin', icon: Trash2, to: '/bin', active: pathname.startsWith('/bin') },
     settings: { key: 'settings', label: 'Settings', icon: Settings, to: '/settings', active: pathname.startsWith('/settings') },
   };
   return order.map((k) => all[k]);
 }
 /** going to a page (even the one you are on) closes the item that was open */
-const linkProps = (i: NavItem) => ({ 'aria-current': i.active ? ('page' as const) : undefined, onClick: () => useStore.getState().setOpenNote(null) });
+const linkProps = (i: NavItem) => ({ 'aria-current': i.active ? ('page' as const) : undefined });
+/** a page opens as it was left: the item that was open and the tag that was chosen (another page's open item never follows you) */
+const back = (base: string, p?: { id: string | null; search: string }) => `${base}${p?.id ? `/${p.id}` : ''}${p?.search ?? ''}`;
 
 /**
  * Keeps the CSS variables --ind-x/-y/-w/-h at the active link's box, for the `.bt-ind` element that some UI styles slide

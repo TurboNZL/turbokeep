@@ -29,36 +29,36 @@
 
     <ImageView
         android:id="@+id/open"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
         android:layout_gravity="top|end"
         android:layout_margin="4dp"
         android:background="@drawable/widget_fab_bg"
         android:contentDescription="Open"
-        android:padding="8dp"
+        android:padding="9dp"
         android:src="@drawable/ic_w_open" />
 
     <ImageView
         android:id="@+id/refresh"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
         android:layout_gravity="bottom|end"
         android:layout_margin="4dp"
         android:background="@drawable/widget_fab_bg"
         android:contentDescription="Refresh"
-        android:padding="8dp"
+        android:padding="9dp"
         android:src="@drawable/ic_w_refresh" />
 
     <ProgressBar
         android:id="@+id/refresh_spin"
         style="?android:attr/progressBarStyleSmall"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
         android:layout_gravity="bottom|end"
         android:layout_margin="4dp"
         android:background="@drawable/widget_fab_bg"
         android:indeterminate="true"
         android:indeterminateTint="@color/widget_accent"
-        android:padding="7dp"
+        android:padding="8dp"
         android:visibility="gone" />
 </FrameLayout>
