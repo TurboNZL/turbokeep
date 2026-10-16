@@ -56,7 +56,7 @@ object KeepApi {
                 when {
                     r.isSuccessful && t.contains("\"ok\":true") -> null
                     viaAccess && (cfId.isEmpty() || cfSecret.isEmpty()) -> "Cloudflare Access answered instead of TurboKeep. Fill in the service token (Client ID and Secret) or use a pairing code that includes it."
-                    viaAccess -> "Cloudflare Access refused the service token (HTTP ${r.code}). Check the Client ID and Secret, and that the token is allowed by a Service Auth policy on this application."
+                    viaAccess -> "Cloudflare Access sent the sign-in page instead of accepting the service token (HTTP ${r.code}). The credentials may be right but the application for this address has no policy with the action Service Auth that includes this token (an Allow policy never accepts a token; TurboMusic's application is a different one). Add that policy in Zero Trust > Access > Applications > this application > Policies, check the Client ID ends in .access, and try again."
                     else -> "No TurboKeep answered at $url (HTTP ${r.code}). Check the address, the port, and that the phone can reach it (a home address only works on your home network)."
                 }
             }
