@@ -6,13 +6,15 @@ import { pokeWidgets } from '../lib/actions.ts';
 import { cn } from '../lib/cn.ts';
 import { TagPicker } from './TagPicker.tsx';
 import { AutoText } from './AutoText.tsx';
+import { markFresh } from '../lib/fresh.ts';
+import { titleOverflow } from '../lib/title.ts';
 
 /** The Add button elsewhere in the app asks for the focus with this (it works from Settings too: the request waits until Home is on screen). */
 let wanted = false;
 export function requestCompose() { wanted = true; window.dispatchEvent(new Event('tk:compose')); }
 
 /**
- * Where things start. Type, press Enter: it is on your Home list (a task by default). Shift+Enter starts a new line in the title. Press Tab once to type a description. Click away and what you
+ * Where things start. Type, press Enter: it is on your Home list (a task by default). Shift+Enter starts a new line in the title. Type a title and the description box appears: press Tab to go to it. Click away and what you
  * typed is kept, so nothing is lost. "Send to tags" files it straight away under as many tags as you like instead (it leaves the list and is found
  * by its tags). Ctrl+Enter in the description adds it too. Inside a tag, new things start with that tag.
  */
@@ -28,6 +30,8 @@ export function Composer({ tag, autoFocus, onAdded }: { tag?: string; autoFocus?
   const draft = useRef({ title, text }); draft.current = { title, text };
   const pickingRef = useRef(false); pickingRef.current = picking;
   const sending = useRef(false);
+  const caret = useRef<number | null>(null); // after a long title moved into the description: where typing goes on
+  useEffect(() => { if (caret.current !== null && textEl.current) { const c = caret.current; caret.current = null; textEl.current.focus(); textEl.current.setSelectionRange(c, c); } });
   const pressing = useRef(false);
 
   useEffect(() => {
@@ -52,7 +56,7 @@ export function Composer({ tag, autoFocus, onAdded }: { tag?: string; autoFocus?
       const n = await api.createNote({ title: t, text: body, tags, onList: tag ? false : keepOnList });
       setTitle(''); setText(''); draft.current = { title: '', text: '' };
       void useStore.getState().refreshMeta(); pokeWidgets();
-      onAdded(n);
+      markFresh(n.id); onAdded(n);
       return n;
     } catch (e) { toast((e as Error).message || 'Could not add that', { tone: 'bad' }); return null; }
     finally { sending.current = false; setBusy(false); }
@@ -66,20 +70,20 @@ export function Composer({ tag, autoFocus, onAdded }: { tag?: string; autoFocus?
       onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node) && !pickingRef.current && !pressing.current) void commit(); }}>
       <div className="flex items-center gap-2">
         <AutoText ref={titleEl} className="input !min-h-11 max-h-48 flex-1 resize-none !py-2.5 !text-base" aria-label="Add something" placeholder={tag ? `Add to ${tag.split('.').pop()}…` : 'Add something…'} value={title} autoFocus={autoFocus}
-          enterKeyHint="done" autoComplete="off" onChange={(e) => setTitle(e.target.value)}
+          enterKeyHint="done" autoComplete="off" onChange={(e) => { const o = titleOverflow(e.target.value, text); if (o) { setTitle(o.title); setText(o.text); caret.current = o.caret; } else setTitle(e.target.value); }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void commit().then(() => titleEl.current?.focus()); } }} />
         <button type="button" tabIndex={-1} className="btn btn-accent !min-h-11 !px-3" aria-label="Add" title="Add (Enter)" disabled={busy || (!title.trim() && !text.trim())} onClick={() => void commit().then(() => titleEl.current?.focus())}><Plus size={18} /></button>
       </div>
-      <textarea ref={textEl} className={cn('input note-text w-full resize-none !py-2 text-sm transition-[min-height]', text || title ? 'min-h-[4.5rem]' : 'min-h-0 !py-1.5')} rows={text ? Math.min(8, text.split('\n').length + 1) : title ? 3 : 1}
+      {(title || text) && <textarea ref={textEl} className="input note-text min-h-[4.5rem] w-full resize-none !py-2 text-sm" rows={Math.min(8, text.split('\n').length + 1)}
         aria-label="Description (optional)" placeholder="Description: press Tab after the title" value={text} onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void commit().then(() => titleEl.current?.focus()); } }} />
+        onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void commit().then(() => titleEl.current?.focus()); } }} />}
       {(title.trim() || text.trim()) && (
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" className="btn !min-h-11 flex-1 sm:flex-none" disabled={busy} onClick={() => setPicking(true)}><Tags size={16} />Send to tags</button>
           <span className="hidden text-xs text-muted sm:inline">Enter adds it to your list · click away keeps it too</span>
         </div>)}
-      {picking && <TagPicker initial={[]} keepOnList={false} title="Send to tags" onClose={() => { setPicking(false); titleEl.current?.focus(); }}
-        onDone={(tags, keep) => { setPicking(false); void commit(tags, keep || tags.length === 0).then((n) => { if (n && tags.length) toast(`Filed under ${tags.join(', ')}`); titleEl.current?.focus(); }); }} />}
+      {picking && <TagPicker initial={[]} title="Send to tags" onClose={() => { setPicking(false); titleEl.current?.focus(); }}
+        onDone={(tags) => { setPicking(false); void commit(tags, tags.length === 0).then((n) => { if (n && tags.length) toast(`Sent to ${tags.join(', ')}`); titleEl.current?.focus(); }); }} />}
     </div>
   );
 }

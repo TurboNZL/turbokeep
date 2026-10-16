@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowDownUp, Pencil, Plus } from 'lucide-react';
 import { api, type Note, type TagInfo } from '../lib/api.ts';
 import { useStore } from '../lib/store.ts';
+import { cn } from '../lib/cn.ts';
 import { SORTS, canReorder, dueSoon, filterFromSearch, homeLink, matchesFilter, positionBetween, sortKey, sortNotes, viewParams, type HomeFilter } from '../lib/views.ts';
 import { excerpt, pokeWidgets } from '../lib/actions.ts';
 import { notesKey, takeNotes } from '../lib/prefetch.ts';
@@ -15,10 +16,14 @@ import { Composer } from '../components/Composer.tsx';
 import { ItemRow, titleOf } from '../components/ItemRow.tsx';
 import { Sortable, SortableList } from '../components/SortableList.tsx';
 import { TagRail } from '../components/TagRail.tsx';
+import { railTags } from '../lib/tagTree.ts';
 import { Dialog } from '../components/Dialog.tsx';
+import { OtherPiles } from '../components/OtherPiles.tsx';
 import { useWide } from '../lib/useWide.ts';
 
 const SCOPE_NAMES = { list: 'Tasks', all: 'All notes', due: 'Due soon' } as const;
+/** the editor panel stays on screen while the list scrolls */
+const STICKY = 'md:sticky md:top-20 md:self-start md:max-h-[calc(100dvh-6.5rem-var(--dock-h,0px))] md:overflow-y-auto';
 
 /** What each filter last showed: coming back to Home (from Settings, say) draws the list at once and updates it behind the scenes. */
 const cache = new Map<string, Note[]>();
@@ -63,7 +68,8 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   const closeIfOpen = useCallback((nid: string) => { if (useStore.getState().openNote === nid) { setOpenNote(null); nav(homeLink(null, filter, base), { replace: true }); } }, [setOpenNote, nav, base, filter.scope, filter.tag, filter.q]); // eslint-disable-line react-hooks/exhaustive-deps
   const item = useItemUi({ pile: archive ? 'archive' : 'live', open: (nid) => go(nid), closeIfOpen });
 
-  const keep = settings.keepView;
+  const keep = settings.viewStyle !== 'list';
+  const pane = settings.viewStyle === 'pane' && useWide(1024); // cards with the editor in a panel on the right (not a window)
   // every page and tab keeps the order it was given; "Due soon" is always the closest first
   const skey = sortKey(filter, archive), sort = settings.sorts[skey] ?? settings.sort, soon = filter.scope === 'due' && !filter.tag && !filter.q;
   const visible = useMemo(() => {
@@ -73,7 +79,7 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   const draggable = canReorder(sort, filter) && visible.length > 1;
   const openTitle = openNote ? (notes.find((n) => n.id === openNote) ? titleOf(notes.find((n) => n.id === openNote)!) : 'your note') : '';
   const name = filter.q ? 'Search' : filter.tag ? filter.tag.split('.').pop()! : SCOPE_NAMES[filter.scope];
-  const heading = archive ? `Archive · ${name}` : name;
+  const heading = archive ? `Archive · ${filter.scope === 'list' && !filter.tag && !filter.q ? 'Old Tasks' : name}` : name;
 
   // the Archive's own tag column: only the tags something archived was sent to
   const [archiveTags, setArchiveTags] = useState<TagInfo[]>([]);
@@ -104,42 +110,43 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   const list = (
     <section aria-label="Items" className="min-w-0 space-y-3">
       <div className="flex items-center gap-2">
-        <h1 className="min-w-0 flex-1 truncate text-xl font-bold">{filter.tag && tags.find((t) => t.title === filter.tag)?.emoji} {heading}{filter.tag && filter.tag.includes('.') && <span className="text-sm font-normal text-muted"> · {filter.tag}</span>}</h1>
+        <h1 className="min-w-0 flex-1 truncate py-1 text-xl font-bold leading-normal">{filter.tag && tags.find((t) => t.title === filter.tag)?.emoji} {heading}{filter.tag && filter.tag.includes('.') && <span className="text-sm font-normal text-muted"> · {filter.tag}</span>}</h1>
         {soon
           ? <span className="shrink-0 text-xs text-muted">Closest first</span>
           : <Select className="!w-44 shrink-0 text-sm" aria-label={`Sort ${name}`} value={sort} onChange={(v) => updateSettings({ sorts: { ...settings.sorts, [skey]: v as SortId } })} options={SORTS.map((x) => ({ value: x.id, label: x.label, icon: x.id === sort ? <ArrowDownUp size={14} className="shrink-0 text-accent" /> : undefined }))} />}
       </div>
       {soon && <p className="-mt-1 text-xs text-muted">The next five things with a date, and everything else due before the end of the day, week, month or 3 months they fall in. Overdue ones come first.</p>}
       {!filter.q && !archive && !soon && <Composer key={filter.tag ?? ''} tag={filter.tag} autoFocus={wide && !id} onAdded={added} />}
-      {filter.q && <p className="text-sm text-muted">Results for “{filter.q}” <button className="underline" onClick={() => go(id, { q: undefined })}>clear</button></p>}
+      {filter.q && <><p className="text-sm text-muted">Results for “{filter.q}” on {archive ? 'the Archive' : 'Home'} <button className="underline" onClick={() => go(id, { q: undefined })}>clear</button></p><OtherPiles q={filter.q} from={archive ? 'archive' : 'home'} seed={notes.length} /></>}
       {error && <p role="alert" className="text-sm text-bad">{error}</p>}
       {!wide && !id && openNote && <button className="chip inline-flex items-center gap-1.5" onClick={() => nav(homeLink(openNote, filter, base))}><Pencil size={12} />Continue editing: {openTitle}</button>}
       {draggable ? <SortableList ids={visible.map((n) => n.id)} grid={keep} onMove={(a, b, c) => void move(a, b, c)}>{listEl}</SortableList> : listEl}
       {loaded && !visible.length && !error && (
         <p className="py-8 text-center text-sm text-muted">{filter.q ? 'Nothing matches.' : archive ? 'Nothing archived here.' : filter.tag ? 'Nothing under this tag yet. Send a note to it.' : filter.scope === 'list' ? 'Your list is empty. Type something above.' : filter.scope === 'due' ? 'Nothing has a date yet.' : 'Nothing here.'}</p>)}
-      {draggable && <p className="text-center text-xs text-muted">Drag to reorder. On a touch screen, drag the grip. Tap the arrow to read the description. Right-click or hold for more.</p>}
+      {draggable && <p className="text-center text-xs text-muted">Drag to reorder. On a touch screen, drag the grip. Tap an item to read it, the pencil to edit it. Right-click or hold for more.</p>}
     </section>
   );
 
   const send = sp.get('send') === '1'; // the widget's "Save to memory": the item opens with the tag picker ready
   const editor = id && <NoteEditor key={id} id={id} startPicking={send} onPicked={() => nav(homeLink(id, filter, base), { replace: true })} onBack={close} onGone={() => { setOpenNote(null); go(null, {}, true); }} onOpenNote={(other) => go(other)} />;
   const rail = (
-    <TagRail tags={archive ? archiveTags : tags} archive={archive} filter={filter} counts={{ list: !archive && filter.scope === 'list' && !filter.tag && !filter.q && loaded ? visible.length : null }}
+    <TagRail tags={railTags(archive ? archiveTags : tags)} archive={archive} filter={filter} counts={{ list: !archive && filter.scope === 'list' && !filter.tag && !filter.q && loaded ? visible.length : null }}
       onScope={(s) => go(id, { scope: s, tag: undefined, q: undefined })} onTag={(t) => go(id, { tag: t || undefined, scope: 'list', q: undefined })} onEditTag={setEditingTag} />
   );
 
+  const panel = <div className={cn('min-w-0', STICKY)}>{editor}</div>;
   return (
     <>
       {keep ? (
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)]">{rail}{list}</div>
+        <div className={cn('grid grid-cols-[minmax(0,1fr)] gap-4', pane && id ? 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)_minmax(22rem,30rem)]' : 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)]')}>{rail}{list}{pane && id && panel}</div>
       ) : (
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[minmax(17rem,min(var(--list-w,26rem),50%))_minmax(0,1fr)] lg:grid-cols-[var(--rail-w,11rem)_minmax(17rem,min(var(--list-w,28rem),45%))_minmax(0,1fr)]">
           {(wide || !id) && <div className="min-w-0 md:col-span-2 lg:col-span-1">{rail}</div>}
           {(wide || !id) && list}
-          {id ? <div className="min-w-0 md:col-start-2 md:row-start-2 lg:col-start-3 lg:row-start-1">{editor}</div>
+          {id ? <div className={cn('min-w-0 md:col-start-2 md:row-start-2 lg:col-start-3 lg:row-start-1', STICKY)}>{editor}</div>
             : wide && <Overview notes={visible} filter={filter} archive={archive} onOpen={(nid) => go(nid)} />}
         </div>)}
-      {keep && id && <Dialog title="Note" wide onClose={close}>{editor}</Dialog>}
+      {keep && !pane && id && <Dialog title="Note" wide onClose={close}>{editor}</Dialog>}
       {editingTag && <TagDialog tag={editingTag} onClose={() => setEditingTag(null)} onDone={() => { const gone = editingTag.title === filter.tag; setEditingTag(null); void refreshMeta(); if (gone) go(id, { tag: undefined }); void load(); }} />}
       {item.ui}
     </>
@@ -154,7 +161,7 @@ function Overview({ notes, filter, archive, onOpen }: { notes: Note[]; filter: H
   return (
     <aside className="hidden min-w-0 space-y-4 md:col-start-2 md:block lg:col-start-3" aria-label="Overview">
       <div className="card space-y-1 p-4"><h2 className="font-semibold">{archive ? 'Things you are done with' : 'Type to add, tap to read'}</h2>
-        <p className="text-sm text-muted">{notes.length} here{filter.scope === 'list' && !filter.tag ? (archive ? ' finished' : ' on your list') : ''}. {archive ? 'The archive is organised like Home: the same tabs, tags and orders. Open an item to read it, or untick a finished task to bring it back.' : 'Add something in the box above; press Tab for a description. Open an item to edit it, or use the arrow on its row to read it in place.'}</p>
+        <p className="text-sm text-muted">{notes.length} here{filter.scope === 'list' && !filter.tag ? (archive ? ' finished' : ' on your list') : ''}. {archive ? 'The archive is organised like Home: the same tabs, tags and orders. Open an item to read it, or untick a finished task to bring it back.' : 'Add something in the box above; press Tab for a description. Tap an item to read it in place, or the pencil to edit it.'}</p>
         <p className="flex items-center gap-1 pt-1 text-xs text-muted"><Plus size={12} />Right-click (or hold) an item to pin, file, link, download or bin it.</p></div>
       {!archive && due.length > 0 && <div className="card p-3"><h3 className="px-2 pb-1 text-xs font-semibold uppercase tracking-wider text-muted">Coming up</h3><ul>{due.map((n) => <Item key={n.id} n={n} />)}</ul></div>}
       {pinned.length > 0 && <div className="card p-3"><h3 className="px-2 pb-1 text-xs font-semibold uppercase tracking-wider text-muted">Pinned</h3><ul>{pinned.map((n) => <Item key={n.id} n={n} />)}</ul></div>}
@@ -183,3 +190,4 @@ function Wall({ items, render, minRem }: { items: Note[]; render: (n: Note) => R
     </div>
   );
 }
+

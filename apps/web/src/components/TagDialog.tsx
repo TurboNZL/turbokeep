@@ -7,7 +7,7 @@ import { cn } from '../lib/cn.ts';
 const COLORS = ['e10600', 'ff6a00', 'ffb020', 'f2dc3d', '7ac943', '2fb344', '12b5a5', '2fb8e8', '2f80ed', '5b5bf0', '8b5cf6', 'd63fa6', 'f43f5e', '8a8f98'];
 
 /** Name, emoji and colour of one tag. The colour is what colours every note carrying the tag, so it should be easy to see. Renaming onto another tag merges them. */
-export function TagDialog({ tag, onClose, onDone }: { tag: TagInfo; onClose: () => void; onDone: () => void }) {
+export function TagDialog({ tag, onClose, onDone, implied }: { tag: TagInfo; onClose: () => void; onDone: () => void; /** a parent that only exists as the front of its sub-tags' names */ implied?: boolean }) {
   const [name, setName] = useState(tag.title);
   const [emoji, setEmoji] = useState(tag.emoji);
   const [color, setColor] = useState(tag.color);
@@ -29,7 +29,7 @@ export function TagDialog({ tag, onClose, onDone }: { tag: TagInfo; onClose: () 
           <button type="button" className="btn !h-14 !w-14 shrink-0 !p-0 text-3xl" aria-expanded={picking} aria-label={emoji ? `Emoji ${emoji}: change` : 'Choose an emoji'} onClick={() => setPicking((p) => !p)}>{emoji || '🙂'}</button>
           <label className="block min-w-0 flex-1 space-y-1 text-sm">Name<input className="input" value={name} onChange={(e) => setName(e.target.value)} required autoFocus /></label>
         </div>
-        <p className="-mt-2 text-xs text-muted">A dot makes a sub-tag: <code>work.reports</code> sits under <code>work</code>.</p>
+        <p className="-mt-2 text-xs text-muted">A dot makes a sub-tag: <code>work.reports</code> sits under <code>work</code>. Renaming a tag renames the tags under it too.</p>
         {picking && <div className="rounded-theme border border-line p-2"><EmojiPicker value={emoji} onPick={(u) => { setEmoji(u); setPicking(false); }} />{emoji && <button type="button" className="btn btn-ghost mt-2 text-xs" onClick={() => { setEmoji(''); setPicking(false); }}>No emoji</button>}</div>}
         <div className="space-y-1.5 text-sm">
           <span>Colour <span className="text-muted">(tints every note with this tag)</span></span>
@@ -41,7 +41,7 @@ export function TagDialog({ tag, onClose, onDone }: { tag: TagInfo; onClose: () 
         </div>
         {error && <div role="alert" className="rounded-theme bg-bad/15 p-2.5 text-sm text-bad">{error}</div>}
         <div className="flex flex-wrap gap-2"><button className="btn btn-accent">Save</button><button type="button" className="btn" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn ml-auto text-bad" onClick={async () => { if (confirm(`Remove the tag "${tag.title}" from all its notes?`)) { await api.deleteTag(tag.title); onDone(); } }}>Delete tag</button></div>
+          <button type="button" className="btn ml-auto text-bad" onClick={async () => { if (confirm(implied ? `Remove "${tag.title}" and every tag under it from all their notes?` : `Remove the tag "${tag.title}" from all its notes? (Tags under it stay.)`)) { await api.deleteTag(tag.title, implied); onDone(); } }}>Delete tag</button></div>
       </form>
     </Dialog>
   );

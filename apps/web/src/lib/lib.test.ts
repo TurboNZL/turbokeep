@@ -40,6 +40,9 @@ describe('dates', () => {
 import { canReorder, compareManual, dueSoon, filterFromSearch, homeLink, matchesFilter, positionBetween, sortKey, sortNotes, viewParams } from './views.ts';
 import { cleanNavOrder, DEFAULT_SETTINGS, loadSettings } from './settings.ts';
 import { linkedNotes } from './clip.ts';
+import { buildQuery, parseQuery, typedFilter } from './searchQuery.ts';
+import { railTags } from './tagTree.ts';
+import { TITLE_MAX, titleOverflow } from './title.ts';
 import { looksOf, stripe } from './tagLook.ts';
 import type { Note } from './api.ts';
 const note = (title: string, o: Partial<Note> = {}): Note => ({ id: title, title, text: '', noteType: 'plain-text', pinned: false, archived: false, trashed: false, onList: true, dueDate: null, percentDone: 0, position: 0, tags: [], createdAt: '2026-01-01', updatedAt: '2026-01-01', ...o });
@@ -55,7 +58,8 @@ describe('the filter, the address and what belongs in a list', () => {
     expect(viewParams({ scope: 'all' })).toEqual({ excerpt: '1' });
     expect(viewParams({ scope: 'list', tag: 'home' })).toEqual({ excerpt: '1', tag: 'home', list: '0' }); // a tag shows what was sent to tags, not the tasks that carry it
     expect(viewParams({ scope: 'all', tag: 'home' }, true)).toEqual({ excerpt: '1', view: 'archived', tag: 'home', list: '0' });
-    expect(viewParams({ scope: 'list', q: 'milk' })).toEqual({ excerpt: '1', view: 'kept', q: 'milk' }); // a search also looks through the archive
+    expect(viewParams({ scope: 'list', q: 'milk' })).toEqual({ excerpt: '1', q: 'milk' }); // a search looks through the page you are on
+    expect(viewParams({ scope: 'list', q: 'milk' }, true)).toEqual({ excerpt: '1', view: 'archived', q: 'milk' });
   });
   it('links keep the open note and drop defaults', () => {
     expect(homeLink(null)).toBe('/home');
@@ -79,7 +83,8 @@ describe('the filter, the address and what belongs in a list', () => {
     expect(matchesFilter(done, { scope: 'all' }, true)).toBe(true); // the archive shows the archived ones, and only those
     expect(matchesFilter(task, { scope: 'all' }, true)).toBe(false);
     expect(matchesFilter(done, { scope: 'all' })).toBe(false); // finished = archived: out of the live lists
-    expect(matchesFilter(done, { scope: 'list', q: 'x' })).toBe(true); // but a search keeps what the server found
+    expect(matchesFilter(done, { scope: 'list', q: 'x' })).toBe(false);
+    expect(matchesFilter(done, { scope: 'list', q: 'x' }, true)).toBe(true); // a search keeps what the server found on that page
     expect(matchesFilter(gone, { scope: 'all', q: 'x' })).toBe(false);
   });
 });
@@ -175,5 +180,40 @@ describe('settings, links and colours', () => {
     expect(stripe([])).toBeUndefined();
     expect(stripe(['ff0000'])).toEqual({ background: '#ff0000' });
     expect(String(stripe(['ff0000', '00ff00'])?.background)).toBe('linear-gradient(to bottom, #ff0000 0% 50%, #00ff00 50% 100%)');
+  });
+});
+
+describe('the search language in the address', () => {
+  it('turns the text into chips and back', () => {
+    const { chips, text } = parseQuery('milk tag:work -tag:"old stuff" before:2024-06 is:task');
+    expect(text).toBe('milk');
+    expect(chips).toEqual([{ key: 'tag', neg: false, value: 'work' }, { key: 'tag', neg: true, value: 'old stuff' }, { key: 'before', neg: false, value: '2024-06' }, { key: 'is', neg: false, value: 'task' }]);
+    expect(buildQuery(chips, text)).toBe('tag:work -tag:"old stuff" before:2024-06 is:task milk');
+    expect(parseQuery('tag:').chips).toEqual([]); // nothing after the colon: not a chip yet
+  });
+  it('knows which filter is being typed', () => {
+    expect(typedFilter('tag:wo')).toEqual({ key: 'tag', neg: false, rest: 'wo' });
+    expect(typedFilter('-tag:')).toEqual({ key: 'tag', neg: true, rest: '' });
+    expect(typedFilter('tagged')).toBeNull();
+    expect(typedFilter('milk')).toBeNull();
+  });
+});
+
+describe('the tags column', () => {
+  const tag = (title: string, count: number) => ({ title, emoji: '', color: '', count });
+  it('shows a parent even when no note is directly under it, children after it, and leaves out what is empty', () => {
+    const rail = railTags([tag('work.reports', 2), tag('home', 0), tag('work.old.2020', 1), tag('alpha', 3)]);
+    expect(rail.map((t) => `${t.title}:${t.total}${t.implied ? '*' : ''}`)).toEqual(['alpha:3', 'work:3*', 'work.old:1*', 'work.old.2020:1', 'work.reports:2']);
+  });
+});
+
+describe('a title too long to be a title', () => {
+  it('moves into the description, the note gets the date as its title, and typing goes on after the moved text', () => {
+    expect(titleOverflow('x'.repeat(TITLE_MAX), '')).toBeNull();
+    const o = titleOverflow('y'.repeat(TITLE_MAX + 1), 'old text', new Date(2026, 9, 16, 9, 5))!;
+    expect(o.title).toBe('Friday, 16 Oct 2026 at 09:05');
+    expect(o.text).toBe(`${'y'.repeat(TITLE_MAX + 1)}\n\nold text`);
+    expect(o.caret).toBe(TITLE_MAX + 1);
+    expect(titleOverflow('z'.repeat(200), '')!.text).toBe('z'.repeat(200));
   });
 });

@@ -53,6 +53,7 @@ create table if not exists tags (
 create table if not exists note_tags (
   note_id text not null references notes(id) on delete cascade,
   tag_id text not null references tags(id) on delete cascade,
+  position integer not null default 0, -- the order the tags have on their note (drag to change)
   primary key (note_id, tag_id)
 );
 `;
@@ -122,6 +123,8 @@ export const MIGRATIONS: Migration[] = [
     (db.prepare('select id from notes where on_list = 0 order by pinned desc, updated_at desc').all() as Row[]).forEach((r, i) => setPos.run(order.length + i + 1, r.id));
     db.exec('drop table if exists task_reminders; drop table if exists task_relations; drop table if exists task_comments; drop table tasks; drop table if exists projects');
   },
+  // 4 -> 5: the tags of a note have an order of their own
+  'alter table note_tags add column position integer not null default 0',
 ];
 export const SCHEMA_VERSION = 1 + MIGRATIONS.length;
 
@@ -130,7 +133,7 @@ function migrate(db: DatabaseSync) {
   // a database made before versions existed has its tables already: the shape of `tasks` says which version it is (a new one has no tables)
   if (have === 0 && db.prepare("select 1 x from sqlite_master where type = 'table' and name = 'tasks'").get())
     have = (db.prepare("select 1 x from pragma_table_info('tasks') where name = 'note_id'").get() ? (db.prepare("select 1 x from pragma_table_info('tags') where name = 'emoji'").get() ? 3 : 2) : 1);
-  else if (have === 0 && db.prepare("select 1 x from pragma_table_info('notes') where name = 'on_list'").get()) have = SCHEMA_VERSION;
+  else if (have === 0 && db.prepare("select 1 x from pragma_table_info('notes') where name = 'on_list'").get()) have = db.prepare("select 1 x from pragma_table_info('note_tags') where name = 'position'").get() ? SCHEMA_VERSION : 4;
   if (have > SCHEMA_VERSION) throw new Error(`This database is from a newer TurboKeep (schema ${have}, this server knows ${SCHEMA_VERSION}). Update the server, or restore a backup.`);
   if (have === SCHEMA_VERSION) { db.exec(`pragma user_version = ${SCHEMA_VERSION}`); return; }
   db.exec('begin immediate');

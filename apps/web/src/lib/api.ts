@@ -22,6 +22,7 @@ export interface Note {
   onList: boolean; dueDate: string | null; percentDone: number; position: number; tags: string[]; createdAt: string; updatedAt: string;
 }
 export type NotePatch = Partial<Pick<Note, 'title' | 'text' | 'noteType' | 'pinned' | 'archived' | 'trashed' | 'onList' | 'dueDate' | 'percentDone' | 'tags'>> & { base?: string };
+export interface TagCounts { title: string; emoji: string; color: string; notes: number; tasks: number; archived: number; trashed: number }
 export interface TagInfo { title: string; emoji: string; color: string; count: number }
 export interface NoteParams { excerpt?: string; view?: string; list?: string; tag?: string; untagged?: string; q?: string; due?: string }
 export interface Report { warnings: string[]; dry: boolean; [k: string]: number | string[] | boolean }
@@ -53,7 +54,9 @@ export const api = {
   tags: (pile: 'live' | 'archived' = 'live') => req<TagInfo[]>('GET', pile === 'archived' ? '/api/tags?view=archived' : '/api/tags'),
   styleTag: (title: string, look: { emoji?: string; color?: string }) => req<unknown>('PATCH', '/api/tags', { title, ...look }),
   renameTag: (from: string, to: string) => req<unknown>('PATCH', '/api/tags', { from, to }),
-  deleteTag: (title: string) => req<unknown>('DELETE', `/api/tags?title=${encodeURIComponent(title)}`),
+  deleteTag: (title: string, tree = false) => req<unknown>('DELETE', `/api/tags?title=${encodeURIComponent(title)}${tree ? '&tree=1' : ''}`),
+  /** every tag wherever its notes are (the tag manager) */
+  tagsEverywhere: () => req<TagCounts[]>('GET', '/api/tags?view=all'),
 
   importFiles: (kind: 'turbokeep' | 'standardnotes' | 'vikunja', files: File[], dry: boolean) => {
     const f = new FormData();

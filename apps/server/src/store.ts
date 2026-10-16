@@ -38,10 +38,46 @@ const noteDto = (r: Row, tags: string[]): NoteDto => ({
 
 function tagMap(db: DB, userId: number): Map<string, string[]> {
   const m = new Map<string, string[]>();
-  for (const r of all(db, 'select nt.note_id, t.title from note_tags nt join tags t on t.id = nt.tag_id where t.user_id = ? order by t.title', userId)) {
+  for (const r of all(db, 'select nt.note_id, t.title from note_tags nt join tags t on t.id = nt.tag_id where t.user_id = ? order by nt.position, t.title', userId)) {
     (m.get(r.note_id) ?? m.set(r.note_id, []).get(r.note_id)!).push(r.title);
   }
   return m;
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+/** "2019", "2019-06" or "2019-06-14" as the first and last day it covers, or null when it is not a date. */
+export function dateRange(text: string): { from: string; to: string } | null {
+  const m = /^(\d{4})(?:-(\d{1,2})(?:-(\d{1,2}))?)?$/.exec(text.trim());
+  if (!m) return null;
+  const y = Number(m[1]), mo = m[2] ? Number(m[2]) : 0, d = m[3] ? Number(m[3]) : 0, last = (yy: number, mm: number) => new Date(Date.UTC(yy, mm, 0)).getUTCDate();
+  if (mo && (mo < 1 || mo > 12)) return null;
+  if (d && (d < 1 || d > last(y, mo))) return null;
+  if (!mo) return { from: `${y}-01-01`, to: `${y}-12-31` };
+  if (!d) return { from: `${y}-${pad2(mo)}-01`, to: `${y}-${pad2(mo)}-${pad2(last(y, mo))}` };
+  return { from: `${y}-${pad2(mo)}-${pad2(d)}`, to: `${y}-${pad2(mo)}-${pad2(d)}` };
+}
+
+export interface Search { words: string[]; tags: string[]; notTags: string[]; before: { from: string; to: string }[]; after: { from: string; to: string }[]; is: string[]; notIs: string[]; has: string[]; notHas: string[] }
+/**
+ * The search language, in the style of Discord's: words, `"a phrase"`, and filters `tag:work` (also finds `work.reports`), `-tag:old` (leaves them out),
+ * `before:2019-06` / `after:2020` (when the note was made; a year or a month is the whole period), `is:task|note|pinned|markdown`, `has:date|tags|text`.
+ * A `-` in front of any filter turns it round. Filters combine with AND, so `tag:a tag:b` finds notes with both. A filter that makes no sense is read as a word.
+ */
+export function parseSearch(q: string): Search {
+  const out: Search = { words: [], tags: [], notTags: [], before: [], after: [], is: [], notIs: [], has: [], notHas: [] };
+  const re = /(-?)(tag|before|after|is|has):(?:"([^"]*)"|(\S+))|"([^"]+)"|(\S+)/gi;
+  for (const m of q.matchAll(re)) {
+    if (m[2]) {
+      const key = m[2].toLowerCase(), neg = m[1] === '-', val = (m[3] ?? m[4] ?? '').trim();
+      if (!val) continue;
+      if (key === 'tag') (neg ? out.notTags : out.tags).push(val);
+      else if (key === 'is') (neg ? out.notIs : out.is).push(val.toLowerCase());
+      else if (key === 'has') (neg ? out.notHas : out.has).push(val.toLowerCase());
+      else { const r = dateRange(val); if (r) (key === 'before' ? out.before : out.after).push(r); else out.words.push(m[0]); }
+    } else out.words.push(m[5] ?? m[6] ?? '');
+  }
+  out.words = out.words.filter(Boolean).slice(0, 8);
+  return out;
 }
 
 export interface NoteQuery {
@@ -66,10 +102,25 @@ export function listNotes(db: DB, userId: number, f: NoteQuery = {}): NoteDto[] 
   if (f.tag) { where.push('exists (select 1 from note_tags nt join tags g on g.id = nt.tag_id where nt.note_id = n.id and (g.title = ? or g.title like ?))'); args.push(f.tag, `${f.tag}.%`); }
   if (f.untagged) where.push('not exists (select 1 from note_tags nt where nt.note_id = n.id)');
   if (f.q?.trim()) {
-    for (const word of f.q.trim().split(/\s+/).slice(0, 8)) {
+    const q = parseSearch(f.q);
+    for (const word of q.words) {
       where.push("(n.title like ? escape '\\' or n.text like ? escape '\\')");
       const like = `%${word.replace(/[\\%_]/g, '\\$&')}%`;
       args.push(like, like);
+    }
+    for (const [list, not] of [[q.tags, false], [q.notTags, true]] as const) for (const t of list) {
+      where.push(`${not ? 'not ' : ''}exists (select 1 from note_tags nt join tags g on g.id = nt.tag_id where nt.note_id = n.id and (lower(g.title) = ? or lower(g.title) like ? escape '\\'))`);
+      args.push(t.toLowerCase(), `${t.toLowerCase().replace(/[\\%_]/g, '\\$&')}.%`);
+    }
+    for (const r of q.before) { where.push('substr(n.created_at, 1, 10) < ?'); args.push(r.from); }
+    for (const r of q.after) { where.push('substr(n.created_at, 1, 10) > ?'); args.push(r.to); }
+    for (const [list, not] of [[q.is, false], [q.notIs, true]] as const) for (const v of list) {
+      const cond = v === 'task' ? 'n.on_list = 1' : v === 'note' ? 'n.on_list = 0' : v === 'pinned' ? 'n.pinned = 1' : v === 'markdown' ? "n.note_type = 'markdown'" : null;
+      if (cond) where.push(not ? `not (${cond})` : cond);
+    }
+    for (const [list, not] of [[q.has, false], [q.notHas, true]] as const) for (const v of list) {
+      const cond = v === 'date' ? 'n.due_date is not null' : v === 'tags' ? 'exists (select 1 from note_tags nt where nt.note_id = n.id)' : v === 'text' ? "n.text <> ''" : null;
+      if (cond) where.push(not ? `not (${cond})` : cond);
     }
   }
   const d = new Date(), startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -91,7 +142,7 @@ export function getNote(db: DB, userId: number, id: string): NoteDto {
   if (!r) throw new HttpError(404, 'Note not found');
   return noteDto(r, tagTitles(db, id));
 }
-const tagTitles = (db: DB, noteId: string) => all(db, 'select t.title from note_tags nt join tags t on t.id = nt.tag_id where nt.note_id = ? order by t.title', noteId).map((r) => r.title as string);
+const tagTitles = (db: DB, noteId: string) => all(db, 'select t.title from note_tags nt join tags t on t.id = nt.tag_id where nt.note_id = ? order by nt.position, t.title', noteId).map((r) => r.title as string);
 
 function ensureTag(db: DB, userId: number, title: string): string {
   const r = get(db, 'select id from tags where user_id = ? and title = ?', userId, title);
@@ -102,13 +153,14 @@ function ensureTag(db: DB, userId: number, title: string): string {
 }
 const cleanTag = (s: unknown) => String(s ?? '').trim().replace(/\s+/g, ' ').slice(0, 80);
 
-/** a tag that has a look (emoji or colour) stays when its last note goes, so the look is not lost */
-const dropUnusedTags = (db: DB, userId: number) => run(db, "delete from tags where user_id = ? and emoji = '' and color = '' and id not in (select tag_id from note_tags)", userId);
+/** a tag nothing carries, and no sub-tag of it carries either, is deleted (its look with it); a parent such as `work` stays while `work.reports` has notes */
+const dropUnusedTags = (db: DB, userId: number) => run(db, `delete from tags where user_id = ? and id not in (select tag_id from note_tags)
+  and not exists (select 1 from tags c where c.user_id = tags.user_id and substr(c.title, 1, length(tags.title) + 1) = tags.title || '.' and c.id in (select tag_id from note_tags))`, userId);
 
 function setNoteTags(db: DB, userId: number, noteId: string, tags: unknown) {
   const titles = [...new Set((Array.isArray(tags) ? tags : []).map(cleanTag).filter(Boolean))];
   run(db, 'delete from note_tags where note_id = ?', noteId);
-  for (const t of titles) run(db, 'insert or ignore into note_tags (note_id, tag_id) values (?,?)', noteId, ensureTag(db, userId, t));
+  titles.forEach((t, i) => run(db, 'insert or ignore into note_tags (note_id, tag_id, position) values (?,?,?)', noteId, ensureTag(db, userId, t), i));
   dropUnusedTags(db, userId);
 }
 
@@ -200,9 +252,19 @@ export function listTags(db: DB, userId: number, pile: 'live' | 'archived' = 'li
   return all(db, `select t.title, t.emoji, t.color, count(n.id) as count from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id and n.trashed = 0 and n.archived = ? and n.on_list = 0
     where t.user_id = ? group by t.id order by t.title`, pile === 'archived' ? 1 : 0, userId).map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, count: Number(r.count) }));
 }
+/** For the tag manager: every tag wherever its notes are (on Home as notes, on the task list, in the archive, in the bin), and the parents that only exist as the front of a sub-tag's name. */
+export function listTagsEverywhere(db: DB, userId: number) {
+  const rows = all(db, `select t.title, t.emoji, t.color,
+      coalesce(sum(n.trashed = 0 and n.archived = 0 and n.on_list = 0), 0) as notes, coalesce(sum(n.trashed = 0 and n.archived = 0 and n.on_list = 1), 0) as tasks,
+      coalesce(sum(n.trashed = 0 and n.archived = 1), 0) as archived, coalesce(sum(n.trashed = 1), 0) as trashed
+    from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id where t.user_id = ? group by t.id order by t.title`, userId);
+  return rows.map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, notes: Number(r.notes), tasks: Number(r.tasks), archived: Number(r.archived), trashed: Number(r.trashed) }));
+}
 /** The look of a tag: at most one emoji (or a short symbol) and a six-digit colour without '#'; empty clears it. */
 export function styleTag(db: DB, userId: number, title: string, style: { emoji?: unknown; color?: unknown }) {
-  const src = get(db, 'select id, emoji, color from tags where user_id = ? and title = ?', userId, title);
+  let src = get(db, 'select id, emoji, color from tags where user_id = ? and title = ?', userId, title);
+  // a parent such as `work` has no row of its own while only `work.reports` carries notes: it gets one when it is given a look
+  if (!src && get(db, "select 1 x from tags where user_id = ? and substr(title, 1, ?) = ?", userId, title.length + 1, `${title}.`)) { ensureTag(db, userId, title); src = get(db, 'select id, emoji, color from tags where user_id = ? and title = ?', userId, title); }
   if (!src) throw new HttpError(404, 'Tag not found');
   let emoji = String(src.emoji), color = String(src.color);
   if (style.emoji !== undefined) { emoji = [...String(style.emoji).trim()].slice(0, 4).join(''); }
@@ -212,21 +274,26 @@ export function styleTag(db: DB, userId: number, title: string, style: { emoji?:
   }
   run(db, 'update tags set emoji = ?, color = ? where id = ?', emoji, color, src.id);
 }
+/** Renames a tag and everything under it (`work` -> `job` also makes `work.reports` into `job.reports`); onto an existing tag it merges. */
 export function renameTag(db: DB, userId: number, from: string, to: string) {
   const dest = cleanTag(to);
   if (!dest) throw new HttpError(400, 'A tag needs a name');
   tx(db, () => {
-    const src = get(db, 'select id from tags where user_id = ? and title = ?', userId, from);
-    if (!src) throw new HttpError(404, 'Tag not found');
-    const existing = get(db, 'select id from tags where user_id = ? and title = ?', userId, dest);
-    if (!existing) { run(db, 'update tags set title = ? where id = ?', dest, src.id); return; }
-    const sty = get(db, 'select emoji, color from tags where id = ?', src.id)!;
-    run(db, "update tags set emoji = case when emoji = '' then ? else emoji end, color = case when color = '' then ? else color end where id = ?", sty.emoji, sty.color, existing.id);
-    if (existing.id === src.id) return;
-    run(db, 'insert or ignore into note_tags (note_id, tag_id) select note_id, ? from note_tags where tag_id = ?', existing.id, src.id);
-    run(db, 'delete from tags where id = ?', src.id);
+    const family = all(db, 'select id, title from tags where user_id = ? and (title = ? or substr(title, 1, ?) = ?) order by title', userId, from, from.length + 1, `${from}.`);
+    if (!family.length) throw new HttpError(404, 'Tag not found');
+    for (const src of family) {
+      const next = dest + String(src.title).slice(from.length);
+      const existing = get(db, 'select id from tags where user_id = ? and title = ?', userId, next);
+      if (!existing) { run(db, 'update tags set title = ? where id = ?', next, src.id); continue; }
+      if (existing.id === src.id) continue;
+      const sty = get(db, 'select emoji, color from tags where id = ?', src.id)!;
+      run(db, "update tags set emoji = case when emoji = '' then ? else emoji end, color = case when color = '' then ? else color end where id = ?", sty.emoji, sty.color, existing.id);
+      run(db, 'insert or ignore into note_tags (note_id, tag_id, position) select note_id, ?, position from note_tags where tag_id = ?', existing.id, src.id);
+      run(db, 'delete from tags where id = ?', src.id);
+    }
   });
 }
-export function deleteTag(db: DB, userId: number, title: string) {
+export function deleteTag(db: DB, userId: number, title: string, tree = false) {
   run(db, 'delete from tags where user_id = ? and title = ?', userId, title);
+  if (tree) run(db, 'delete from tags where user_id = ? and substr(title, 1, ?) = ?', userId, title.length + 1, `${title}.`);
 }

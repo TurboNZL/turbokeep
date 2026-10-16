@@ -86,11 +86,22 @@ html, body { overflow-x: hidden; overscroll-behavior-x: none; }
 }
 @keyframes tk-collapse-glass { 0%, 70% { max-height: 16rem; } 100% { max-height: 0; margin-top: 0; } }
 
+/* a new item arrives: it opens up from nothing, settles with a small overshoot and glows once in the accent colour (a glass glint on top in Liquid Glass) */
+.tk-item[data-new] { animation: tk-arrive 560ms cubic-bezier(0.2, 0.9, 0.3, 1.15) backwards; }
+.tk-item[data-new] .tk-card { animation: tk-glow 1100ms ease-out backwards; }
+@keyframes tk-arrive { 0% { opacity: 0; transform: translateY(-14px) scale(0.94); max-height: 0; } 35% { max-height: 14rem; } 100% { opacity: 1; transform: none; max-height: 40rem; } }
+@keyframes tk-glow { 0% { box-shadow: 0 0 0 0 hsl(var(--accent) / 0.75), 0 0 22px 2px hsl(var(--accent) / 0.55); } 100% { box-shadow: 0 0 0 10px hsl(var(--accent) / 0), 0 0 0 0 hsl(var(--accent) / 0); } }
+:root[data-ui='liquid'] .tk-item[data-new] .tk-card::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 2;
+  background: linear-gradient(104deg, transparent 32%, rgb(255 255 255 / 0.6) 47%, rgb(255 255 255 / 0.15) 53%, transparent 68%);
+  transform: translateX(-130%); animation: tk-glint 640ms 120ms ease-out forwards;
+}
+
 /* drag: the row being carried floats; the grip never starts a scroll */
 .tk-item[data-dragging] .tk-card { box-shadow: 0 18px 40px rgb(0 0 0 / 0.35); }
 .tk-grip { touch-action: none; }
 .tk-card { touch-action: pan-y; -webkit-touch-callout: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .tk-page, .tk-page-fwd, .tk-page-back, .tk-toast, .tk-item[data-finishing], .tk-item[data-finishing] .tk-card, .tk-item[data-finishing] input[type='checkbox'] { animation-duration: 1ms !important; }
+  .tk-page, .tk-page-fwd, .tk-page-back, .tk-toast, .tk-item[data-new], .tk-item[data-new] .tk-card, .tk-item[data-finishing], .tk-item[data-finishing] .tk-card, .tk-item[data-finishing] input[type='checkbox'] { animation-duration: 1ms !important; }
 }

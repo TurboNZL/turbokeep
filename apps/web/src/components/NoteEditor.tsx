@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Archive, ArchiveRestore, ArrowLeft, CheckCircle2, Download, Eye, Link2, Pin, PinOff, RotateCcw, Tags, Trash2, Undo2 } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowLeft, CheckCircle2, Download, Link2, ListChecks, Pin, PinOff, RotateCcw, Tags, Trash2, Undo2 } from 'lucide-react';
 import { api, ApiError, saveBlob, type Note, type NotePatch } from '../lib/api.ts';
 import { useStore } from '../lib/store.ts';
 import { cn } from '../lib/cn.ts';
@@ -10,6 +10,7 @@ import { linkedNotes } from '../lib/clip.ts';
 import { TagInput } from './TagInput.tsx';
 import { TagPicker } from './TagPicker.tsx';
 import { AutoText } from './AutoText.tsx';
+import { titleOverflow } from '../lib/title.ts';
 
 type Save = 'saved' | 'saving' | 'dirty' | 'offline' | 'conflict';
 type Meta = Pick<Note, 'pinned' | 'archived' | 'trashed' | 'onList' | 'dueDate' | 'percentDone' | 'tags'>;
@@ -43,7 +44,10 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
   const [meta, setMeta] = useState<Meta>(metaOf(note));
   const [status, setStatus] = useState<Save>('saved');
   const [theirs, setTheirs] = useState<Note | null>(null);
-  const [preview, setPreview] = useState(false);
+  const [editing, setEditing] = useState(note.noteType !== 'markdown' || !note.text.trim()); // a Markdown note shows its rendering until you click into it
+  const descEl = useRef<HTMLTextAreaElement>(null);
+  const caret = useRef<number | null>(null); // where typing goes on in the description (after an over-long title moved there, or when a rendered note was clicked)
+  useEffect(() => { if (caret.current !== null && descEl.current) { const c = caret.current; caret.current = null; descEl.current.focus(); descEl.current.setSelectionRange(c, c); } });
   const [picking, setPicking] = useState(!!startPicking);
   useEffect(() => { if (startPicking) onPicked?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const base = useRef(note.updatedAt);
@@ -98,11 +102,13 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
   const download = () => {
     saveBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), `${(title || 'note').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80)}.${markdown ? 'md' : 'txt'}`);
   };
-  const showPreview = markdown && (preview || settings.notePreview);
+  const split = markdown && settings.markdownSplit; // the editor and the rendering side by side (Settings > Items)
+  const ro = meta.trashed;
+  const showEditor = !markdown || split || editing;
+  const showPreview = markdown && (split || !showEditor);
   const html = useMemo(() => (showPreview ? renderMarkdown(text) : ''), [showPreview, text]);
   const links = useMemo(() => linkedNotes(text).filter((x) => x !== note.id), [text, note.id]);
   const font = settings.noteFont === 'mono' ? 'mono' : '';
-  const ro = meta.trashed;
   const label: Record<Save, string> = { saved: 'Saved', saving: 'Saving…', dirty: 'Typing…', offline: 'Offline: will retry', conflict: 'Changed elsewhere' };
   const pct = Math.round(meta.percentDone * 100);
 
@@ -133,11 +139,21 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
           </div>
         </div>)}
 
-      <AutoText className="input !min-h-12 resize-none !py-2.5 !text-lg font-semibold" aria-label="Title" placeholder="Title (Enter starts a new line)" value={title} readOnly={ro} onChange={(e) => { setTitle(e.target.value); typed({ title: e.target.value }); }} />
-      <div className={cn('grid gap-3', showPreview && 'lg:grid-cols-2')}>
-        <AutoText className={cn('input note-text min-h-[5.5rem] w-full resize-none', font)} rows={3} aria-label="Description" placeholder="Description, notes, anything…" value={text} readOnly={ro} onChange={(e) => { setText(e.target.value); typed({ text: e.target.value }); }} />
-        {showPreview && <div className="guide card min-h-[12rem] overflow-auto p-4" aria-label="Preview" dangerouslySetInnerHTML={{ __html: html || '<p class="text-muted">Nothing to preview.</p>' }}
-          onClick={(e) => { const a = (e.target as HTMLElement).closest('a'); const m = a && /\/home\/([0-9a-f-]{36})/i.exec(a.getAttribute('href') ?? ''); if (a && m && a.href.startsWith(location.origin)) { e.preventDefault(); onOpenNote(m[1]!.toLowerCase()); } }} />}
+      <AutoText className="input !min-h-12 resize-none !py-2.5 !text-lg font-semibold" aria-label="Title" placeholder="Title (Enter starts a new line)" value={title} readOnly={ro}
+        onChange={(e) => {
+          const o = titleOverflow(e.target.value, text);
+          if (!o) { setTitle(e.target.value); typed({ title: e.target.value }); return; }
+          setTitle(o.title); setText(o.text); setEditing(true); caret.current = o.caret; typed({ title: o.title, text: o.text }); // too long for a title: it goes into the description and typing goes on there
+        }} />
+      <div className={cn('grid gap-3', split && 'lg:grid-cols-2')}>
+        {showEditor && <AutoText ref={descEl} className={cn('input note-text min-h-[5.5rem] w-full resize-none', font)} rows={3} aria-label="Description" placeholder="Description, notes, anything…" value={text} readOnly={ro} autoFocus={markdown && !split && editing && !!text.trim()}
+          onChange={(e) => { setText(e.target.value); typed({ text: e.target.value }); }} onBlur={() => { if (markdown && !split && text.trim()) setEditing(false); }} />}
+        {showPreview && <div className={cn('guide card min-h-[5.5rem] overflow-auto p-4', !split && 'cursor-text')} aria-label="Preview" title={split ? undefined : 'Click to edit'} dangerouslySetInnerHTML={{ __html: html || '<p class="text-muted">Nothing to preview.</p>' }}
+          onClick={(e) => {
+            const a = (e.target as HTMLElement).closest('a'); const m = a && /\/home\/([0-9a-f-]{36})/i.exec(a.getAttribute('href') ?? '');
+            if (a && m && a.href.startsWith(location.origin)) { e.preventDefault(); onOpenNote(m[1]!.toLowerCase()); return; }
+            if (!a && !split && !ro) { caret.current = text.length; setEditing(true); }
+          }} />}
       </div>
       {links.length > 0 && <LinkedNotes ids={links} onOpen={onOpenNote} />}
 
@@ -145,7 +161,6 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
         <div className="card space-y-3 p-3">
           <div className="space-y-1.5"><span className="text-xs font-medium text-muted">Tags</span><TagInput value={meta.tags} onChange={(tags) => set({ tags })} /></div>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-            <label className="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" className="h-5 w-5" checked={meta.onList} onChange={(e) => set({ onList: e.target.checked })} />On my task list <span className="text-xs text-muted">(has a checkbox on Home)</span></label>
             <label className="flex items-center gap-2 text-sm">Due
               <input type="date" className="input !w-auto" value={toLocalInput(meta.dueDate).slice(0, 10)} onChange={(e) => set({ dueDate: e.target.value ? new Date(`${e.target.value}T12:00`).toISOString() : null })} />
               {meta.dueDate && <button type="button" className="btn btn-ghost !px-2 text-xs" onClick={() => set({ dueDate: null })}><RotateCcw size={13} />Clear</button>}</label>
@@ -155,14 +170,15 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
               onPointerUp={() => set({ percentDone: meta.percentDone })} onKeyUp={() => set({ percentDone: meta.percentDone })} onBlur={() => set({ percentDone: meta.percentDone })} />
             <span className="w-10 text-right tabular-nums">{pct}%</span></label>}
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="btn !min-h-11" onClick={() => setPicking(true)}><Tags size={16} />Send to tags</button>
-            <label className="ml-auto flex items-center gap-2 text-xs text-muted"><input type="checkbox" checked={markdown} onChange={(e) => { const t = e.target.checked ? 'markdown' : 'plain-text'; setNoteType(t); if (e.target.checked) setPreview(true); typed({ noteType: t }, true); }} />Markdown</label>
-            {markdown && !settings.notePreview && <button className="btn btn-ghost !px-2 text-xs" aria-pressed={preview} onClick={() => setPreview(!preview)}><Eye size={14} />Preview</button>}
+            {meta.onList
+              ? <button type="button" className="btn !min-h-11" onClick={() => setPicking(true)}><Tags size={16} />Send to tags</button>
+              : <button type="button" className="btn !min-h-11" onClick={() => set({ onList: true })}><ListChecks size={16} />Send to tasks</button>}
+            <label className="ml-auto flex items-center gap-2 text-xs text-muted"><input type="checkbox" checked={markdown} onChange={(e) => { const t = e.target.checked ? 'markdown' : 'plain-text'; setNoteType(t); setEditing(!e.target.checked || !text.trim()); typed({ noteType: t }, true); }} />Markdown</label>
           </div>
         </div>)}
       <p className="text-xs text-muted">Created {new Date(note.createdAt).toLocaleString()} · {text.length.toLocaleString()} characters</p>
-      {picking && <TagPicker initial={meta.tags} keepOnList={meta.tags.length ? meta.onList : false} title="Send to tags" onClose={() => setPicking(false)}
-        onDone={(tags, keep) => { setPicking(false); set({ tags, onList: tags.length ? keep : meta.onList }); }} />}
+      {picking && <TagPicker initial={meta.tags} title="Send to tags" onClose={() => setPicking(false)}
+        onDone={(tags) => { setPicking(false); if (tags.length) set({ tags, onList: false }); }} />}
     </div>
   );
 }

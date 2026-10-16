@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { AppearanceLayout, WallpaperCard } from '../components/AppearanceCard.tsx';
 import { Select } from '../components/Select.tsx';
 import { AndroidCard } from '../components/AndroidCard.tsx';
+import { AccessCard } from '../components/AccessCard.tsx';
+import { TagManager } from '../components/TagManager.tsx';
 import { PairPhoneCard } from '../components/PairPhoneCard.tsx';
 import { ServerUpdateCard } from '../components/ServerUpdate.tsx';
 import { Section } from '../components/Section.tsx';
@@ -33,11 +35,14 @@ export function SettingsPage() {
       {tab === 'look' && <><AppearanceLayout /><NavOrderCard /><Section title="Wallpaper"><WallpaperCard /></Section></>}
 
       {tab === 'notes' && (
+        <>
         <Section title="Editor">
           <p className="text-sm text-muted">These choices are kept in this browser only.</p>
           <div className="space-y-1 text-sm"><span>Font</span><Select className="!w-56" aria-label="Font" value={settings.noteFont} onChange={(v) => updateSettings({ noteFont: v as 'sans' | 'mono' })} options={[{ value: 'sans', label: 'Proportional' }, { value: 'mono', label: 'Monospace' }]} /></div>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={settings.notePreview} onChange={(e) => updateSettings({ notePreview: e.target.checked })} />Show the Markdown preview beside the text (items marked Markdown)</label>
-        </Section>)}
+          <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={settings.markdownSplit} onChange={(e) => updateSettings({ markdownSplit: e.target.checked })} /><span>Split view for Markdown items: the editor and the rendered text side by side. Off (the default): a Markdown item shows only its rendered text until you click into it, and again when you click away.</span></label>
+        </Section>
+        <TagManager />
+        </>)}
 
       {tab === 'data' && <ImportExport />}
       {tab === 'account' && <AccountCards />}
@@ -51,6 +56,7 @@ export function SettingsPage() {
           <p className="text-sm"><a className="underline" href="https://github.com/TurboNZL/turbokeep/releases" target="_blank" rel="noreferrer noopener">Releases</a></p>
         </Section>
         <AndroidCard />
+        <AccessCard />
         <PairPhoneCard />
         <ServerUpdateCard />
         </>)}

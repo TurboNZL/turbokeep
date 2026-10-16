@@ -1,10 +1,11 @@
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Archive, House, Plus, Search, Settings, Trash2, type LucideIcon } from 'lucide-react';
+import { Archive, House, Plus, Settings, Trash2, type LucideIcon } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { effectiveUi } from 'turbothemes';
 import { cn } from '../lib/cn.ts';
 import { useStore } from '../lib/store.ts';
 import { homeLink } from '../lib/views.ts';
+import { SearchBox } from './SearchBox.tsx';
 import { useWide } from '../lib/useWide.ts';
 import type { NavId } from '../lib/settings.ts';
 import { requestCompose } from './Composer.tsx';
@@ -15,18 +16,17 @@ interface NavItem { key: NavId; label: string; icon: LucideIcon; to: string; act
 /** The pages, in the order chosen in Settings: Home (the list, tags and the open item), the Archive, the Bin and Settings. Home's link carries the open note, so no tab hides it. */
 function useNavItems(): NavItem[] {
   const { pathname } = useLocation();
-  const openNote = useStore((s) => s.openNote);
   const order = useStore((s) => s.settings.navOrder);
-  const wide = useWide();
   const all: Record<NavId, NavItem> = {
-    home: { key: 'home', label: 'Home', icon: House, to: homeLink(wide ? openNote : null), active: pathname.startsWith('/home') },
+    home: { key: 'home', label: 'Home', icon: House, to: '/home', active: pathname.startsWith('/home') },
     archive: { key: 'archive', label: 'Archive', icon: Archive, to: '/archive', active: pathname.startsWith('/archive') },
     bin: { key: 'bin', label: 'Bin', icon: Trash2, to: '/bin', active: pathname.startsWith('/bin') },
     settings: { key: 'settings', label: 'Settings', icon: Settings, to: '/settings', active: pathname.startsWith('/settings') },
   };
   return order.map((k) => all[k]);
 }
-const linkProps = (i: NavItem) => ({ 'aria-current': i.active ? ('page' as const) : undefined });
+/** going to a page (even the one you are on) closes the item that was open */
+const linkProps = (i: NavItem) => ({ 'aria-current': i.active ? ('page' as const) : undefined, onClick: () => useStore.getState().setOpenNote(null) });
 
 /**
  * Keeps the CSS variables --ind-x/-y/-w/-h at the active link's box, for the `.bt-ind` element that some UI styles slide
@@ -76,10 +76,11 @@ export function Layout() {
   const activeKey = items.find((i) => i.active)?.key ?? '';
   const sideRef = useIndicator<HTMLElement>(activeKey + items.map((i) => i.key).join());
   const tabRef = useIndicator<HTMLElement>(activeKey + items.map((i) => i.key).join());
-  const [q, setQ] = useState(sp.get('q') ?? '');
-  const openNote = useStore((s) => s.openNote);
   const wide = useWide();
-  useEffect(() => setQ(pathname.startsWith('/home') ? sp.get('q') ?? '' : ''), [sp, pathname]);
+  // a search belongs to the page you are on: Home, the Archive or the Bin (Settings searches Home)
+  const searchBase = pathname.startsWith('/archive') ? '/archive' : pathname.startsWith('/bin') ? '/bin' : '/home';
+  const query = pathname.startsWith('/settings') ? '' : sp.get('q') ?? '';
+  const search = (q: string) => nav(`${searchBase}${q ? `?q=${encodeURIComponent(q)}` : ''}`);
   const ui = useStore((s) => s.settings.ui);
   const layout = useStore((s) => s.settings.layout);
   const topbar = layout === 'topbar', dock = layout === 'dock';
@@ -109,7 +110,7 @@ export function Layout() {
 
   const add = () => {
     requestCompose();
-    if (!pathname.startsWith('/home')) nav(homeLink(wide ? openNote : null));
+    if (!pathname.startsWith('/home')) nav('/home');
     else if (!wide && sp.get('q') !== null) nav('/home');
   };
 
@@ -128,15 +129,14 @@ export function Layout() {
           ))}
         </aside>}
         <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-          <form className="bt-top bt-shell sticky top-0 z-10 p-3 backdrop-blur" role="search" onSubmit={(e) => { e.preventDefault(); nav(homeLink(wide ? openNote : null, { q: q.trim() || undefined })); }}>
+          <form className="bt-top bt-shell sticky top-0 z-10 p-3 backdrop-blur" onSubmit={(e) => e.preventDefault()}>
             <div className="bt-topin relative flex items-center gap-3">
               <div className={cn('flex shrink-0 items-center gap-2 font-bold', !noSide && 'md:hidden')}><img src={logo} alt="TurboKeep" width={28} height={28} className="h-7 w-7 shrink-0" draggable={false} />{topbar && <span className="hidden md:inline">TurboKeep</span>}</div>
               {topbar && <nav className="bt-toplinks hidden min-w-0 items-center gap-6 overflow-x-auto md:flex" aria-label="Pages">
                 {items.map((i) => <Link key={i.key} to={i.to} {...linkProps(i)} className="bt-toplink whitespace-nowrap">{i.label}</Link>)}
               </nav>}
               <div className="bt-search relative min-w-0 flex-1">
-                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-muted" />
-                <input className="input pl-9" type="search" aria-label="Search everything" placeholder="Search everything" value={q} onChange={(e) => setQ(e.target.value)} />
+                <SearchBox query={query} onSearch={search} where={searchBase === '/archive' ? 'the Archive' : searchBase === '/bin' ? 'the Bin' : 'Home'} />
               </div>
               <button type="button" className="btn btn-accent bt-add shrink-0" aria-label="New" title="Add something (focuses the box at the top of Home)" onClick={add}><Plus size={16} /><span className="hidden sm:inline">New</span></button>
             </div>

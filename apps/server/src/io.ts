@@ -116,7 +116,7 @@ export function importVikunja(db: DB, user: { id: number; username: string }, da
 // ---------------- TurboKeep (everything together) ----------------
 
 export function exportTurboKeep(db: DB, userId: number): Uint8Array {
-  const tagRows = all(db, 'select nt.note_id, t.title from note_tags nt join tags t on t.id = nt.tag_id where t.user_id = ? order by t.title', userId);
+  const tagRows = all(db, 'select nt.note_id, t.title from note_tags nt join tags t on t.id = nt.tag_id where t.user_id = ? order by nt.position, t.title', userId);
   const tags = new Map<string, string[]>();
   for (const r of tagRows) (tags.get(r.note_id) ?? tags.set(r.note_id, []).get(r.note_id)!).push(r.title);
   const notes: TkNote[] = all(db, 'select * from notes where user_id = ? order by created_at, id', userId).map((n) => ({

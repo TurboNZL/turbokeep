@@ -12,10 +12,13 @@ export interface DeviceSettings {
   themeUpdates: boolean;
   themesToken: string;
   noteFont: 'sans' | 'mono';
-  /** Show the Markdown preview next to the editor for notes of type markdown. */
-  notePreview: boolean;
-  /** Google Keep style: items as a wall of cards, an item opens in a window. */
-  keepView: boolean;
+  /** Markdown notes show the rendered text until you click into them; with this on, the editor and the preview sit side by side instead. */
+  markdownSplit: boolean;
+  /** How Home shows items: 'list' (a column with the editor beside it), 'wall' (Google Keep: cards, an item opens in a window) or 'pane' (cards, an item opens in a panel on the right). */
+  viewStyle: ViewStyle;
+  /** The Cloudflare Access service token of this server, kept for the pairing code (the phone needs it when the server sits behind Cloudflare Access). */
+  cfAccessId: string;
+  cfAccessSecret: string;
   /** How the items are ordered when a page or tab has no choice of its own. 'manual' is your own order (drag to change it); the others are automatic and switch dragging off. */
   sort: SortId;
   /** The order each page and tab chose (see `sortKey` in views.ts: 'list', 'all', 'tag:work', 'archive:list' ...). */
@@ -27,6 +30,7 @@ export interface DeviceSettings {
   /** The order of the pages in the side bar, top bar or dock. */
   navOrder: NavId[];
 }
+export type ViewStyle = 'list' | 'wall' | 'pane';
 export type SortId = 'manual' | 'newest' | 'edited' | 'oldest' | 'title' | 'due';
 export type NavId = 'home' | 'archive' | 'bin' | 'settings';
 export const SIZE_LIMITS = { railWidth: { min: 7, max: 22, step: 0.5 }, listWidth: { min: 18, max: 52, step: 1 }, cardWidth: { min: 11, max: 30, step: 0.5 } } as const;
@@ -35,7 +39,7 @@ export const NAV_IDS: NavId[] = ['home', 'archive', 'bin', 'settings'];
 
 export const DEFAULT_SETTINGS: DeviceSettings = {
   theme: 'auto', ui: 'auto', layout: 'side', glass: 'regular', wallpaper: false, wallpaperDarkness: 0.35, wallpaperCustom: false,
-  themeUpdates: true, themesToken: '', noteFont: 'sans', notePreview: true, keepView: false, sort: 'manual', sorts: {}, railWidth: 11, listWidth: 28, cardWidth: 16, navOrder: NAV_IDS,
+  themeUpdates: true, themesToken: '', noteFont: 'sans', markdownSplit: false, viewStyle: 'list', cfAccessId: '', cfAccessSecret: '', sort: 'manual', sorts: {}, railWidth: 11, listWidth: 28, cardWidth: 16, navOrder: NAV_IDS,
 };
 
 const KEY = 'turbokeep.settings';
@@ -46,7 +50,9 @@ export const cleanNavOrder = (v: unknown): NavId[] => {
 };
 export function loadSettings(): DeviceSettings {
   try {
-    const s = { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') } as DeviceSettings;
+    const raw = JSON.parse(localStorage.getItem(KEY) ?? '{}');
+    const s = { ...DEFAULT_SETTINGS, ...raw } as DeviceSettings;
+    if (!['list', 'wall', 'pane'].includes(s.viewStyle)) s.viewStyle = raw.keepView ? 'wall' : 'list'; // the Keep switch from before
     if (!SORT_IDS.includes(s.sort)) s.sort = 'manual'; // 'auto' from before
     s.sorts = Object.fromEntries(Object.entries(s.sorts && typeof s.sorts === 'object' ? s.sorts : {}).filter(([, v]) => SORT_IDS.includes(v as SortId))) as Record<string, SortId>;
     for (const k of ['railWidth', 'listWidth', 'cardWidth'] as const) { const l = SIZE_LIMITS[k]; s[k] = Number.isFinite(s[k]) ? Math.min(l.max, Math.max(l.min, s[k])) : DEFAULT_SETTINGS[k]; }
