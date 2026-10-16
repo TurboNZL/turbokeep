@@ -47,7 +47,7 @@ class ServerPrefs(context: Context) {
         set(v) { p.edit().putBoolean("openShowsSettings", v).apply() }
     /** the size of the round buttons floating over the widgets' corners, in dp (Android 12 and later can resize them), and whether items show their tags (off by default) */
     var widgetButton: Int
-        get() = p.getInt("widgetButton", 34)
+        get() = p.getInt("widgetButton", 40)
         set(v) { p.edit().putInt("widgetButton", v.coerceIn(24, 56)).apply() }
     var widgetShowTags: Boolean
         get() = p.getBoolean("widgetShowTags", false)

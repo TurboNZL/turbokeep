@@ -35,7 +35,7 @@ export function useItemUi({ pile, open, closeIfOpen }: { pile: Pile; open: (id: 
     await wait(finishMs());
     const ok = await patchNote(n.id, { archived: true });
     setFinishing((s) => { const x = new Set(s); x.delete(n.id); return x; });
-    if (ok) undoable(`Finished “${titleOf(n)}”`, () => void patchNote(n.id, { archived: false }));
+    if (ok) undoable(`Archived “${titleOf(n)}”`, () => void patchNote(n.id, { archived: false, onList: n.onList })); // a task that was sent to its tags comes back as a task
   }, [undoable]);
 
   const sendToTasks = useCallback(async (n: Note) => { const ok = await patchNote(n.id, { onList: true }); if (ok) undoable(`Sent “${titleOf(n)}” to your tasks`, () => void patchNote(n.id, { onList: false })); }, [undoable]);
@@ -61,15 +61,15 @@ export function useItemUi({ pile, open, closeIfOpen }: { pile: Pile; open: (id: 
       { key: 'open', label: 'Open', icon: <ExternalLink size={15} />, onSelect: () => open(n.id) },
       { key: 'pin', label: n.pinned ? 'Unpin' : 'Pin to the top', icon: n.pinned ? <PinOff size={15} /> : <Pin size={15} />, onSelect: () => void patchNote(n.id, { pinned: !n.pinned }) },
       n.onList
-        ? { key: 'done', label: n.archived ? 'Reopen' : 'Finish', icon: n.archived ? <RotateCcw size={15} /> : <CheckCircle2 size={15} />, onSelect: () => void toggleDone(n) }
-        : { key: 'arch', label: n.archived ? 'Unarchive' : 'Archive', icon: n.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />, onSelect: () => void patchNote(n.id, { archived: !n.archived }) },
-      n.onList
         ? { key: 'send', label: n.tags.length ? 'Send to tags' : 'Send to tags…', icon: <Tags size={15} />, onSelect: () => void sendToTags(n) }
         : { key: 'send', label: 'Send to tasks', icon: <ListChecks size={15} />, onSelect: () => void sendToTasks(n) },
       { key: 'tags', label: n.tags.length ? 'Change tags…' : 'Add tags…', icon: <Tags size={15} />, onSelect: () => setPicker({ n, send: false }) },
       { key: 'due', label: n.dueDate ? 'Change the date…' : 'Set a date…', icon: <CalendarDays size={15} />, onSelect: () => setDueFor(n) },
-      { ...link, divider: true },
-      { key: 'dl', label: 'Download', icon: <Download size={15} />, onSelect: () => void download(n) },
+      { key: 'dl', label: 'Download', icon: <Download size={15} />, divider: true, onSelect: () => void download(n) },
+      // archiving is what finishing a task is called; a task has a tick for its icon, a note an archive box
+      { key: 'done', label: n.archived ? 'Unarchive' : 'Archive', icon: n.archived ? (n.onList ? <RotateCcw size={15} /> : <ArchiveRestore size={15} />) : (n.onList ? <CheckCircle2 size={15} /> : <Archive size={15} />),
+        onSelect: () => (n.onList ? void toggleDone(n) : void patchNote(n.id, { archived: !n.archived })) },
+      link,
       { key: 'bin', label: 'Move to the bin', icon: <Trash2 size={15} />, danger: true, divider: true, onSelect: () => bin(n) },
     ];
   };

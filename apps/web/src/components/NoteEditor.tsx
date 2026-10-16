@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Archive, ArchiveRestore, ArrowLeft, CheckCircle2, Download, Link2, ListChecks, Pin, PinOff, RotateCcw, Tags, Trash2, Undo2 } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowLeft, CheckCircle2, Download, Link2, ListChecks, Pin, PinOff, RotateCcw, Tags, Trash2, Undo2, X } from 'lucide-react';
 import { api, ApiError, saveBlob, type Note, type NotePatch } from '../lib/api.ts';
 import { useStore } from '../lib/store.ts';
 import { cn } from '../lib/cn.ts';
@@ -11,7 +11,8 @@ import { TagInput } from './TagInput.tsx';
 import { TagPicker } from './TagPicker.tsx';
 import { AutoText } from './AutoText.tsx';
 import { titleOverflow } from '../lib/title.ts';
-import { recall, remember } from '../lib/cache.ts';
+import { recallNote, rememberNote } from '../lib/cache.ts';
+import { takeEditorFocus } from '../lib/focus.ts';
 
 type Save = 'saved' | 'saving' | 'dirty' | 'offline' | 'conflict';
 type Meta = Pick<Note, 'pinned' | 'archived' | 'trashed' | 'onList' | 'dueDate' | 'percentDone' | 'tags'>;
@@ -23,14 +24,14 @@ const metaOf = (n: Note): Meta => ({ pinned: n.pinned, archived: n.archived, tra
  * Everything else (pin, finish, tags, date...) is saved at once and is not part of that, so the list and the editor can both change a note while you type.
  */
 export function NoteEditor({ id, onBack, onGone, onOpenNote, startPicking, onPicked }: { id: string; onBack?: () => void; onGone: () => void; onOpenNote: (id: string) => void; /** open the tag picker at once (the widget's "Save to memory") */ startPicking?: boolean; onPicked?: () => void }) {
-  const [detail, setDetail] = useState<Note | null>(() => recall<Note>(`note:${id}`) ?? null);
+  const [detail, setDetail] = useState<Note | null>(() => recallNote<Note>(id) ?? null);
   const [missing, setMissing] = useState(false);
   useEffect(() => {
     let alive = true;
     // a copy kept from before opens at once; the server is asked anyway (a change made elsewhere shows up as the usual "changed elsewhere" choice, never as a silent overwrite)
-    const hit = recall<Note>(`note:${id}`);
+    const hit = recallNote<Note>(id);
     setDetail(hit ?? null); setMissing(false);
-    api.noteOrNull(id).then((d) => { if (!alive) return; if (d) { remember(`note:${id}`, d, false); if (!hit) setDetail(d); } else setMissing(true); });
+    api.noteOrNull(id).then((d) => { if (!alive) return; if (d) { rememberNote(d); if (!hit) setDetail(d); } else setMissing(true); });
     return () => { alive = false; };
   }, [id]);
   if (missing) return <p className="p-6 text-sm text-muted">That note no longer exists. <button className="underline" onClick={onGone}>Back to the list</button></p>;
@@ -49,6 +50,8 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
   const [theirs, setTheirs] = useState<Note | null>(null);
   const [editing, setEditing] = useState(note.noteType !== 'markdown' || !note.text.trim()); // a Markdown note shows its rendering until you click into it
   const descEl = useRef<HTMLTextAreaElement>(null);
+  const titleEl = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { if (takeEditorFocus(note.id)) { const t = titleEl.current; if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } } }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const caret = useRef<number | null>(null); // where typing goes on in the description (after an over-long title moved there, or when a rendered note was clicked)
   useEffect(() => { if (caret.current !== null && descEl.current) { const c = caret.current; caret.current = null; descEl.current.focus(); descEl.current.setSelectionRange(c, c); } });
   const [picking, setPicking] = useState(!!startPicking && !note.tags.length);
@@ -73,7 +76,7 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
     const patch = pending.current; pending.current = null; firstTyped.current = 0; inflight.current = true; setStatus('saving');
     try {
       const saved = await api.updateNote(note.id, { ...patch, base: force ? undefined : base.current });
-      base.current = saved.updatedAt; replaceNote(excerpt(saved)); remember(`note:${note.id}`, saved, false);
+      base.current = saved.updatedAt; replaceNote(excerpt(saved)); rememberNote(saved);
       setStatus(pending.current ? 'dirty' : 'saved');
     } catch (e) {
       pending.current = { ...patch, ...(pending.current ?? {}) }; // what was typed while this was in flight wins
@@ -123,13 +126,15 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
         <span className={cn('text-xs', status === 'saved' ? 'text-muted' : status === 'saving' || status === 'dirty' ? 'text-warn' : 'text-bad')} aria-live="polite">{label[status]}</span>
         <div className="ml-auto flex flex-wrap items-center gap-1">
           {!ro && <button className="btn btn-ghost !min-h-10 !px-2.5" onClick={() => set({ pinned: !meta.pinned })} aria-pressed={meta.pinned} title={meta.pinned ? 'Unpin' : 'Pin to the top'}>{meta.pinned ? <PinOff size={17} /> : <Pin size={17} />}</button>}
-          {!ro && <button className="btn btn-ghost !min-h-10 !px-2.5" onClick={() => set({ archived: !meta.archived })} title={meta.archived ? (meta.onList ? 'Reopen' : 'Unarchive') : (meta.onList ? 'Finish' : 'Archive')}>{meta.archived ? <ArchiveRestore size={17} /> : meta.onList ? <CheckCircle2 size={17} /> : <Archive size={17} />}</button>}
+          {!ro && <button className="btn btn-ghost !min-h-10 !px-2.5" onClick={() => set({ archived: !meta.archived })} title={meta.archived ? 'Unarchive' : 'Archive'}>{meta.archived ? <ArchiveRestore size={17} /> : meta.onList ? <CheckCircle2 size={17} /> : <Archive size={17} />}</button>}
           <button className="btn btn-ghost !min-h-10 !px-2.5" onClick={() => void copyNoteLink(note.id)} title="Copy a link to this note (paste it into another note)"><Link2 size={17} /></button>
           <button className="btn btn-ghost !min-h-10 !px-2.5" onClick={download} title={`Download as .${markdown ? 'md' : 'txt'}`}><Download size={17} /></button>
           {ro
             ? <><button className="btn !min-h-10 !px-2.5 text-sm" onClick={() => set({ trashed: false })}><Undo2 size={15} />Restore</button>
               <button className="btn !min-h-10 !px-2.5 text-sm text-bad" onClick={async () => { if (confirm('Delete this note for good?')) { pending.current = null; await api.deleteNote(note.id); void useStore.getState().refreshMeta(); useStore.getState().removeNote(note.id); onGone(); } }}><Trash2 size={15} />Delete forever</button></>
             : <button className="btn btn-ghost !min-h-10 !px-2.5" onClick={() => { set({ trashed: true }); onGone(); }} title="Move to the bin"><Trash2 size={17} /></button>}
+        
+          {onBack && <button className="btn btn-ghost !min-h-10 !px-2.5" onClick={onBack} aria-label="Close the editor" title="Close the editor"><X size={18} /></button>}
         </div>
       </div>
 
@@ -143,7 +148,7 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
           </div>
         </div>)}
 
-      <AutoText className="input !min-h-12 resize-none !py-2.5 !text-lg font-semibold" aria-label="Title" placeholder="Title (Enter starts a new line)" value={title} readOnly={ro}
+      <AutoText ref={titleEl} className="input !min-h-12 resize-none !py-2.5 !text-lg font-semibold" aria-label="Title" placeholder="Title (Enter starts a new line)" value={title} readOnly={ro}
         onChange={(e) => {
           const o = titleOverflow(e.target.value, text);
           if (!o) { setTitle(e.target.value); typed({ title: e.target.value }); return; }

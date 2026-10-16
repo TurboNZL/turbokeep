@@ -28,6 +28,12 @@ export interface DeviceSettings {
   buttonSize: 'small' | 'medium' | 'large';
   /** The width of the editor panel beside the Keep wall, in rem (drag the divider to change it). */
   paneWidth: number;
+  /** The size of an emoji and of the name in the tags column, and the space between cards of the Keep views, all in rem. */
+  railEmoji: number;
+  railText: number;
+  cardGap: number;
+  /** In the Keep views: typing the first letter in the add box opens the item straight away (in its window or panel) with that letter in it. */
+  popupOnType: boolean;
   /** The Cloudflare Access service token of this server, kept for the pairing code (the phone needs it when the server sits behind Cloudflare Access). */
   cfAccessId: string;
   cfAccessSecret: string;
@@ -47,13 +53,13 @@ export type CacheLevel = 'off' | 'low' | 'medium' | 'high';
 export type ViewStyle = 'list' | 'wall' | 'pane';
 export type SortId = 'manual' | 'newest' | 'edited' | 'oldest' | 'title' | 'due';
 export type NavId = 'home' | 'archive' | 'bin' | 'settings';
-export const SIZE_LIMITS = { railWidth: { min: 7, max: 22, step: 0.5 }, listWidth: { min: 18, max: 70, step: 1 }, cardWidth: { min: 11, max: 30, step: 0.5 }, paneWidth: { min: 18, max: 60, step: 1 } } as const;
+export const SIZE_LIMITS = { railWidth: { min: 7, max: 22, step: 0.5 }, listWidth: { min: 12, max: 90, step: 1 }, cardWidth: { min: 11, max: 30, step: 0.5 }, paneWidth: { min: 16, max: 90, step: 1 }, railEmoji: { min: 0.875, max: 2.5, step: 0.125 }, railText: { min: 0.75, max: 1.25, step: 0.0625 }, cardGap: { min: 0, max: 2, step: 0.125 } } as const;
 export const SORT_IDS: SortId[] = ['manual', 'newest', 'edited', 'oldest', 'title', 'due'];
 export const NAV_IDS: NavId[] = ['home', 'archive', 'bin', 'settings'];
 
 export const DEFAULT_SETTINGS: DeviceSettings = {
   theme: 'auto', ui: 'auto', layout: 'side', glass: 'regular', wallpaper: false, wallpaperDarkness: 0.35, wallpaperCustom: false,
-  themeUpdates: true, themesToken: '', noteFont: 'sans', markdownSplit: false, viewStyle: 'list', cfAccessId: '', cfAccessSecret: '', fullWhenIdle: false, dividerWhenForeign: false, countTasks: 'never', cacheLevel: 'medium', buttonSize: 'medium', paneWidth: 28, sort: 'manual', sorts: {}, railWidth: 11, listWidth: 28, cardWidth: 16, navOrder: NAV_IDS,
+  themeUpdates: true, themesToken: '', noteFont: 'sans', markdownSplit: false, viewStyle: 'list', cfAccessId: '', cfAccessSecret: '', fullWhenIdle: false, dividerWhenForeign: false, countTasks: 'never', cacheLevel: 'medium', buttonSize: 'medium', paneWidth: 28, railEmoji: 1.25, railText: 0.875, cardGap: 0.75, popupOnType: false, sort: 'manual', sorts: {}, railWidth: 11, listWidth: 28, cardWidth: 16, navOrder: NAV_IDS,
 };
 
 const KEY = 'turbokeep.settings';
@@ -69,7 +75,7 @@ export function loadSettings(): DeviceSettings {
     if (!['list', 'wall', 'pane'].includes(s.viewStyle)) s.viewStyle = raw.keepView ? 'wall' : 'list'; // the Keep switch from before
     if (!SORT_IDS.includes(s.sort)) s.sort = 'manual'; // 'auto' from before
     s.sorts = Object.fromEntries(Object.entries(s.sorts && typeof s.sorts === 'object' ? s.sorts : {}).filter(([, v]) => SORT_IDS.includes(v as SortId))) as Record<string, SortId>;
-    for (const k of ['railWidth', 'listWidth', 'cardWidth', 'paneWidth'] as const) { const l = SIZE_LIMITS[k]; s[k] = Number.isFinite(s[k]) ? Math.min(l.max, Math.max(l.min, s[k])) : DEFAULT_SETTINGS[k]; }
+    for (const k of ['railWidth', 'listWidth', 'cardWidth', 'paneWidth', 'railEmoji', 'railText', 'cardGap'] as const) { const l = SIZE_LIMITS[k]; s[k] = Number.isFinite(s[k]) ? Math.min(l.max, Math.max(l.min, s[k])) : DEFAULT_SETTINGS[k]; }
     s.navOrder = cleanNavOrder(s.navOrder);
     return s;
   } catch { return DEFAULT_SETTINGS; }

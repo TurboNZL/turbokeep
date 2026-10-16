@@ -15,10 +15,6 @@
         192
       ],
       [
-        "apps/web/public/favicon-32.png",
-        32
-      ],
-      [
         "apps/android/app/src/main/res/mipmap-mdpi/ic_launcher.png",
         48
       ],
@@ -62,6 +58,17 @@
     "android": {
       "res": "apps/android/app/src/main/res",
       "stat": "ic_stat_turbokeep"
-    }
+    },
+    "symbolSvg": "apps/web/public/favicon.svg",
+    "symbolPng": [
+      [
+        "apps/web/public/favicon-32.png",
+        32
+      ],
+      [
+        "apps/web/public/favicon-48.png",
+        48
+      ]
+    ]
   }
 }

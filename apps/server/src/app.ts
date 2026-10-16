@@ -151,7 +151,7 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
   app.patch('/api/tags', async (c) => {
     const b = await body(c);
     if (b.from !== undefined) S.renameTag(db, uid(c), String(b.from), String(b.to ?? ''));
-    if (b.emoji !== undefined || b.color !== undefined) S.styleTag(db, uid(c), String(b.title ?? b.to ?? b.from ?? ''), b);
+    if (b.emoji !== undefined || b.color !== undefined || b.keepTasks !== undefined) S.styleTag(db, uid(c), String(b.title ?? b.to ?? b.from ?? ''), b);
     return c.json({ ok: true });
   });
   app.delete('/api/tags', (c) => { S.deleteTag(db, uid(c), c.req.query('title') ?? '', c.req.query('tree') === '1'); return c.json({ ok: true }); });

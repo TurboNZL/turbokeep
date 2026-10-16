@@ -15,7 +15,7 @@ function withParents(tags: TagCounts[]): Row[] {
   for (const t of tags) { const p = t.title.split('.'); for (let i = 1; i <= p.length; i++) titles.add(p.slice(0, i).join('.')); }
   return [...titles].sort((a, b) => a.toLowerCase().split('.').join('\u0000').localeCompare(b.toLowerCase().split('.').join('\u0000'))).map((title) => {
     const t = own.get(title);
-    return { title, emoji: t?.emoji ?? '', color: t?.color ?? '', notes: t?.notes ?? 0, tasks: t?.tasks ?? 0, archived: t?.archived ?? 0, trashed: t?.trashed ?? 0, implied: !t };
+    return { title, keepTasks: t?.keepTasks, emoji: t?.emoji ?? '', color: t?.color ?? '', notes: t?.notes ?? 0, tasks: t?.tasks ?? 0, archived: t?.archived ?? 0, trashed: t?.trashed ?? 0, implied: !t };
   });
 }
 
@@ -60,7 +60,7 @@ export function TagManager() {
             </tbody>
           </table>
         </div>)}
-      {editing && <TagDialog tag={{ title: editing.title, emoji: editing.emoji, color: editing.color, count: editing.notes }} implied={editing.implied} onClose={() => setEditing(null)} onDone={done} />}
+      {editing && <TagDialog tag={{ title: editing.title, emoji: editing.emoji, color: editing.color, count: editing.notes, keepTasks: editing.keepTasks }} implied={editing.implied} onClose={() => setEditing(null)} onDone={done} />}
     </Section>
   );
 }

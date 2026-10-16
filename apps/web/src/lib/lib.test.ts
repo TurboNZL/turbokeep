@@ -45,7 +45,7 @@ import { tasksInTags } from './views.ts';
 import { isCustomEmoji } from './emoji.tsx';
 import { railTags } from './tagTree.ts';
 import { TITLE_MAX, titleOverflow } from './title.ts';
-import { looksOf, stripe } from './tagLook.ts';
+import { barColorOf, colorOf, looksOf, stripe } from './tagLook.ts';
 import type { Note } from './api.ts';
 const note = (title: string, o: Partial<Note> = {}): Note => ({ id: title, title, text: '', noteType: 'plain-text', pinned: false, archived: false, trashed: false, onList: true, dueDate: null, percentDone: 0, position: 0, tags: [], createdAt: '2026-01-01', updatedAt: '2026-01-01', autoTitle: false, ...o });
 
@@ -178,7 +178,7 @@ describe('settings, links and colours', () => {
   });
   it('colours: up to four, in tag order, stacked into one stripe', () => {
     const tags = [{ title: 'a', emoji: '🏠', color: 'ff0000', count: 1 }, { title: 'b', emoji: '', color: '00ff00', count: 1 }, { title: 'c', emoji: '', color: 'ff0000', count: 1 }];
-    expect(looksOf(tags, ['a', 'b', 'c', 'zzz'])).toEqual({ colors: ['ff0000', '00ff00'], emojis: ['🏠'] });
+    expect(looksOf(tags, ['a', 'b', 'c', 'zzz'])).toEqual({ colors: ['ff0000', '00ff00'], bars: ['ff0000', '00ff00'], emojis: ['🏠'] });
     expect(stripe([])).toBeUndefined();
     expect(stripe(['ff0000'])).toEqual({ background: '#ff0000' });
     expect(String(stripe(['ff0000', '00ff00'])?.background)).toBe('linear-gradient(to bottom, #ff0000 0% 50%, #00ff00 50% 100%)');
@@ -240,5 +240,22 @@ describe('tasks in tags, search words, imported emoji', () => {
     expect(isCustomEmoji(':0123456789ab:')).toBe(true);
     expect(isCustomEmoji('😀')).toBe(false);
     expect(isCustomEmoji(':short:')).toBe(false);
+  });
+});
+
+describe('tag colours are inherited', () => {
+  const t = (title: string, color = '') => ({ title, emoji: '', color, count: 1 });
+  it('a tag without a colour takes its parent\'s; one with its own keeps it, and the bar is the parent\'s when they differ', () => {
+    const all = [t('work', '0000ff'), t('work.plain'), t('work.own', 'ff6600'), t('work.same', '0000ff'), t('home')];
+    expect(colorOf(all, 'work.plain')).toBe('0000ff');
+    expect(colorOf(all, 'work.own')).toBe('ff6600');
+    expect(barColorOf(all, 'work.own')).toBe('0000ff'); // the bar says "work", the glow and chip say "own"
+    expect(barColorOf(all, 'work.same')).toBe('0000ff');
+    expect(barColorOf(all, 'work.plain')).toBe('0000ff');
+    expect(colorOf(all, 'home')).toBe('');
+  });
+  it('a parent with a look but no notes of its own in this pile still shows it (the archive column)', () => {
+    const rail = railTags([{ title: 'work.old', emoji: '', color: '', count: 2 }], [{ title: 'work', emoji: '💼', color: '0000ff', count: 0 }]);
+    expect(rail.map((r) => [r.title, r.color, r.emoji])).toEqual([['work', '0000ff', '💼'], ['work.old', '', '']]);
   });
 });

@@ -29,6 +29,9 @@ interface State {
   /** The note open on Home. Kept when you go to Settings and back, and after a reload, so switching tabs never closes the note you were reading. */
   openNote: string | null;
   setOpenNote(id: string | null): void;
+  /** What each page (home, archive) last showed, so leaving it for another page and coming back finds the same item open and the same tag chosen. */
+  pages: Record<string, { id: string | null; search: string }>;
+  setPage(page: string, id: string | null, search: string): void;
 
   toasts: Toast[];
   toast(message: string, o?: Pick<Toast, 'action' | 'tone'>): void;
@@ -36,6 +39,7 @@ interface State {
 }
 
 function readOpenNote(): string | null { try { return localStorage.getItem('turbokeep.openNote'); } catch { return null; } }
+function readPages(): Record<string, { id: string | null; search: string }> { try { return JSON.parse(localStorage.getItem('turbokeep.pages') ?? '{}'); } catch { return {}; } }
 let toastId = 0;
 
 export const useStore = create<State>((set, get) => ({
@@ -60,6 +64,8 @@ export const useStore = create<State>((set, get) => ({
   upsertNote: (n) => set((s) => ({ notes: s.notes.some((x) => x.id === n.id) ? s.notes.map((x) => (x.id === n.id ? n : x)) : [n, ...s.notes] })),
   replaceNote: (n) => set((s) => (s.notes.some((x) => x.id === n.id) ? { notes: s.notes.map((x) => (x.id === n.id ? n : x)) } : s)),
   removeNote: (id) => set((s) => ({ notes: s.notes.filter((x) => x.id !== id) })),
+  pages: readPages(),
+  setPage: (page, id, search) => set((s) => { const pages = { ...s.pages, [page]: { id, search } }; try { localStorage.setItem('turbokeep.pages', JSON.stringify(pages)); } catch { /* private window */ } return { pages }; }),
   openNote: readOpenNote(),
   setOpenNote: (id) => { try { id ? localStorage.setItem('turbokeep.openNote', id) : localStorage.removeItem('turbokeep.openNote'); } catch { /* private window */ } set({ openNote: id }); },
   toasts: [],

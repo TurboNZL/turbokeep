@@ -24,8 +24,8 @@ export interface Note {
   autoTitle: boolean;
 }
 export type NotePatch = Partial<Pick<Note, 'title' | 'text' | 'noteType' | 'pinned' | 'archived' | 'trashed' | 'onList' | 'dueDate' | 'percentDone' | 'tags' | 'autoTitle'>> & { base?: string };
-export interface TagCounts { title: string; emoji: string; color: string; notes: number; tasks: number; archived: number; trashed: number }
-export interface TagInfo { title: string; emoji: string; color: string; count: number }
+export interface TagCounts { title: string; emoji: string; color: string; notes: number; tasks: number; archived: number; trashed: number; keepTasks?: boolean }
+export interface TagInfo { title: string; emoji: string; color: string; count: number; /** archived tasks carrying this tag stay tasks (they are sent to their tags otherwise) */ keepTasks?: boolean }
 export interface NoteParams { excerpt?: string; view?: string; list?: string; tag?: string; untagged?: string; q?: string; due?: string }
 export interface Report { warnings: string[]; dry: boolean; [k: string]: number | string[] | boolean }
 export interface ServerUpdate { available: boolean; restarts: boolean; status: 'idle' | 'running' | 'done' | 'error'; log: string[]; startedAt: number | null; restarting: boolean }
@@ -57,7 +57,7 @@ export const api = {
   emoji: () => req<{ id: string; name: string }[]>('GET', '/api/emoji'),
   addEmoji: (name: string, data: string) => req<{ id: string; name: string }>('POST', '/api/emoji', { name, data }),
   deleteEmoji: (id: string) => req<unknown>('DELETE', `/api/emoji/${id}`),
-  styleTag: (title: string, look: { emoji?: string; color?: string }) => req<unknown>('PATCH', '/api/tags', { title, ...look }),
+  styleTag: (title: string, look: { emoji?: string; color?: string; keepTasks?: boolean }) => req<unknown>('PATCH', '/api/tags', { title, ...look }),
   renameTag: (from: string, to: string) => req<unknown>('PATCH', '/api/tags', { from, to }),
   deleteTag: (title: string, tree = false) => req<unknown>('DELETE', `/api/tags?title=${encodeURIComponent(title)}${tree ? '&tree=1' : ''}`),
   /** every tag wherever its notes are (the tag manager) */

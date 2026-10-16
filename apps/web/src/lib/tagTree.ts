@@ -14,13 +14,14 @@ const byPath = (a: string, b: string) => {
  * Builds the tags column from the tags the server counts: every parent of a sub-tag is there even when no note is directly under it, a tag with nothing
  * under it or under its sub-tags (in this pile) is left out, and children follow their parent.
  */
-export function railTags(tags: TagInfo[]): RailTag[] {
+export function railTags(tags: TagInfo[], looks: TagInfo[] = []): RailTag[] {
   const own = new Map(tags.map((t) => [t.title, t]));
   const titles = new Set<string>();
   for (const t of tags) { const p = parts(t.title); for (let i = 1; i <= p.length; i++) titles.add(p.slice(0, i).join('.')); }
   return [...titles].sort(byPath).map((title) => {
     const t = own.get(title);
     const total = tags.filter((x) => x.title === title || x.title.startsWith(`${title}.`)).reduce((n, x) => n + x.count, 0);
-    return { title, emoji: t?.emoji ?? '', color: t?.color ?? '', count: t?.count ?? 0, total, implied: !t };
+    const l = t ?? looks.find((x) => x.title === title); // a parent with no notes of its own in this pile still has its look
+    return { title, emoji: l?.emoji ?? '', color: l?.color ?? '', count: t?.count ?? 0, total, implied: !t };
   }).filter((t) => t.total > 0);
 }

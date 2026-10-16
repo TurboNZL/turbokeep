@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Download, RefreshCw } from 'lucide-react';
+import { Download, RefreshCw, Settings2 } from 'lucide-react';
 import { android, androidInfo, type AndroidInfo, type UpdateState } from '../lib/native.ts';
 import { Section } from './Section.tsx';
 
@@ -24,6 +24,7 @@ export function AndroidCard() {
         <button className="btn" onClick={() => bridge.checkUpdate()} disabled={u.status === 'checking' || u.status === 'downloading'}><RefreshCw size={15} />Check for updates</button>
         {u.status === 'ready' && <button className="btn btn-accent" onClick={() => bridge.installUpdate()}><Download size={15} />Install {u.version}</button>}
         <button className="btn btn-ghost" onClick={() => bridge.changeServer()}>Change server</button>
+        <button className="btn" onClick={() => bridge.openWidgetSettings()}><Settings2 size={15} />Widget settings</button>
         {text && <span className="text-muted" aria-live="polite">{text}</span>}
       </div>
       <p className="text-xs text-muted">Updates come from the newest release on GitHub; Android asks you to confirm the install. The widget on your home screen lists your open tasks: long-press the home screen, Widgets, TurboKeep.</p>

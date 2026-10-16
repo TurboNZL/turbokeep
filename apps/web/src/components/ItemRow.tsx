@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type HTMLAttributes, type Ref } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type CSSProperties, type HTMLAttributes, type Ref } from 'react';
 import { Calendar, GripVertical, ListChecks, MoreHorizontal, Pencil, Pin, Tags } from 'lucide-react';
 import { cn } from '../lib/cn.ts';
 import { fmtDay, fmtShort, isOverdue, toLocalInput } from '../lib/dates.ts';
@@ -33,9 +33,20 @@ export interface ItemRowProps {
  */
 export function ItemRow({ n, variant, active, finishing, drag, hideCheck, onOpen, onToggleDone, onMenu, onSendToTags, onSendToTasks, onChangeTags, onProgress, onDue }: ItemRowProps) {
   const [open, setOpen] = useState(false);
+  // A click waits a moment to see whether it is the first half of a double click (which edits); while it waits the card shows a soft ring, then the item opens up.
+  const [arming, setArming] = useState(false);
+  const timer = useRef<number>();
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const click = (e: MouseEvent) => {
+    window.clearTimeout(timer.current);
+    if (e.detail >= 2) { setArming(false); onOpen(); return; }
+    if (e.detail === 0) { setOpen((o) => !o); return; } // the keyboard: no waiting
+    setArming(true);
+    timer.current = window.setTimeout(() => { setArming(false); setOpen((o) => !o); }, 230);
+  };
   const [fresh] = useState(() => takeFresh(n.id));
   const allTags = useStore((s) => s.tags);
-  const { colors } = looksOf(allTags, n.tags);
+  const { colors, bars } = looksOf(allTags, n.tags);
   const hold = useLongPress(onMenu);
   const markdown = n.noteType === 'markdown';
   const own = writtenTitle(n);            // the title you wrote, if any
@@ -56,18 +67,18 @@ export function ItemRow({ n, variant, active, finishing, drag, hideCheck, onOpen
       {!open && n.tags.length > shortTags && <span>+{n.tags.length - shortTags}</span>}
     </span>);
   return (
-    <li ref={drag?.setNodeRef} style={drag?.style} data-finishing={finishing || undefined} data-done={done || undefined} data-dragging={drag?.dragging || undefined} data-new={fresh || undefined} className={cn('tk-item list-none', card && 'min-w-0')}>
+    <li ref={drag?.setNodeRef} style={drag?.style} data-finishing={finishing || undefined} data-done={done || undefined} data-dragging={drag?.dragging || undefined} data-new={fresh || undefined} data-arming={arming || undefined} className={cn('tk-item list-none', card && 'min-w-0')}>
       <div className={cn('card bt-row tk-card relative select-none overflow-hidden transition-shadow', active && 'border-accent ring-1 ring-accent', drag?.dragging && 'shadow-2xl ring-1 ring-accent')}
         {...hold} {...drag?.rowProps} onContextMenu={(e) => { e.preventDefault(); onMenu(e.clientX, e.clientY); }}>
         <span aria-hidden className="tk-wash pointer-events-none absolute inset-0" style={wash(colors)} />
-        <span aria-hidden className="tk-stripe pointer-events-none absolute inset-y-0 left-0 w-1.5" style={stripe(colors)} />
+        <span aria-hidden className="tk-stripe pointer-events-none absolute inset-y-0 left-0 w-1.5" style={stripe(bars)} />
         <div className="relative flex items-start gap-0.5 py-1 pl-2.5 pr-1">
           {drag && <button type="button" className="tk-grip mt-1 grid h-9 w-7 shrink-0 cursor-grab place-items-center rounded text-muted hover:text-fg active:cursor-grabbing" aria-label={`Move ${titleOf(n)}: press space, then the arrow keys`} {...drag.handleProps}><GripVertical size={16} /></button>}
           {task && !hideCheck && (
             <label className="tk-check grid h-[var(--tk-btn,2.75rem)] w-[var(--tk-btn,2.75rem)] shrink-0 cursor-pointer place-items-center" data-nohold>
-              <input type="checkbox" className="h-[calc(var(--tk-btn,2.75rem)*0.46)] w-[calc(var(--tk-btn,2.75rem)*0.46)] cursor-pointer" checked={done || !!finishing} disabled={!!finishing} onChange={onToggleDone} aria-label={`${done ? 'Reopen' : 'Finish'}: ${titleOf(n)}`} />
+              <input type="checkbox" className="h-[calc(var(--tk-btn,2.75rem)*0.46)] w-[calc(var(--tk-btn,2.75rem)*0.46)] cursor-pointer" checked={done || !!finishing} disabled={!!finishing} onChange={onToggleDone} aria-label={`${done ? 'Unarchive' : 'Archive'}: ${titleOf(n)}`} />
             </label>)}
-          <button type="button" className={cn('min-w-0 flex-1 cursor-pointer py-2 text-left', (!task || hideCheck) && 'pl-1.5')} onClick={() => setOpen(!open)} onDoubleClick={onOpen} aria-expanded={open} aria-current={active ? 'true' : undefined}>
+          <button type="button" className={cn('min-w-0 flex-1 cursor-pointer py-2 text-left', (!task || hideCheck) && 'pl-1.5')} onClick={click} aria-expanded={open} aria-current={active ? 'true' : undefined}>
             <span className="flex items-start gap-1.5">
               {own
                 ? <span className={cn('tk-title min-w-0 flex-1 whitespace-pre-line break-words text-[0.95rem] font-semibold', done && 'task-done')}>{own}</span>
@@ -88,7 +99,7 @@ export function ItemRow({ n, variant, active, finishing, drag, hideCheck, onOpen
           </div>
         </div>
         {open && (
-          <div className="relative space-y-3 border-t border-line/60 px-4 pb-3 pt-3 select-text" data-nohold>
+          <div className="tk-expand relative space-y-3 border-t border-line/60 px-4 pb-3 pt-3 select-text" data-nohold>
             {own && (body
               ? markdown
                 ? <div className="guide max-h-80 overflow-hidden text-sm" aria-label="Description (Markdown)" dangerouslySetInnerHTML={{ __html: html }} />

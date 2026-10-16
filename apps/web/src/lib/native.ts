@@ -5,6 +5,7 @@ export interface AndroidBridge {
   hasToken(): boolean;
   refreshWidgets(): void;
   changeServer(): void;
+  openWidgetSettings(): void;
   checkUpdate(): void;
   installUpdate(): void;
   setUpdateToken(token: string): void;
