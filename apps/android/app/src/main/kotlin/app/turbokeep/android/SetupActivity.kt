@@ -74,12 +74,12 @@ class SetupActivity : AppCompatActivity() {
             message.setTextColor(0xFF9A9AA5.toInt()); message.text = "Checking…"; connect.isEnabled = false
             val id = cfId.text.toString().trim(); val secret = cfSecret.text.toString().trim()
             Thread {
-                val ok = KeepApi.health(address) != null
+                val problem = KeepApi.probe(address, id, secret)
                 Handler(Looper.getMainLooper()).post {
                     connect.isEnabled = true
-                    if (!ok) {
+                    if (problem != null) {
                         message.setTextColor(0xFFFF6B5E.toInt())
-                        message.text = "No TurboKeep answered at $address. Check the address, the port, and that the phone can reach it (a home address only works on your home network)."
+                        message.text = problem
                     } else {
                         // a different server means the old token is no good
                         if (prefs.serverUrl != address) prefs.token = ""

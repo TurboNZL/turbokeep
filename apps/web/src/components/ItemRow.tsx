@@ -39,10 +39,10 @@ export function ItemRow({ n, variant, active, finishing, drag, hideCheck, onOpen
   useEffect(() => () => window.clearTimeout(timer.current), []);
   const click = (e: MouseEvent) => {
     window.clearTimeout(timer.current);
-    if (e.detail >= 2) { setArming(false); onOpen(); return; }
+    if (e.detail >= 2) { setArming(false); setOpen(false); onOpen(); return; } // (a slow double click may already have opened the item up: it closes in the same moment the editor opens)
     if (e.detail === 0) { setOpen((o) => !o); return; } // the keyboard: no waiting
     setArming(true);
-    timer.current = window.setTimeout(() => { setArming(false); setOpen((o) => !o); }, 230);
+    timer.current = window.setTimeout(() => { setArming(false); setOpen((o) => !o); }, 320);
   };
   const [fresh] = useState(() => takeFresh(n.id));
   const allTags = useStore((s) => s.tags);

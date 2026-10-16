@@ -37,7 +37,7 @@ export function TagInput({ value, onChange, placeholder = 'Add a tag, press Ente
   const setDraft = (d: string) => { setDraftState(d); setHi(-1); onDraft?.(d); };
   const suggestions = useMemo(() => {
     const q = draft.trim().toLowerCase();
-    return all.filter((t) => !value.includes(t.title) && (!q || t.title.toLowerCase().includes(q))).slice(0, q ? 6 : 8);
+    return all.filter((t) => !t.retired && !value.includes(t.title) && (!q || t.title.toLowerCase().includes(q))).slice(0, q ? 6 : 8);
   }, [all, value, draft]);
   const showList = focus && (!!draft.trim() || !big); // the picker window already lists every tag below the field
   const add = (raw: string) => {

@@ -42,11 +42,24 @@ object KeepApi {
         }
     }
 
-    /** Is there a TurboKeep at this address? Used by the setup screen, before anything is saved. */
-    fun health(url: String): String? {
+    /**
+     * Is there a TurboKeep at this address? Used by the setup screen, before anything is saved. Null = yes; otherwise what went wrong, in words. Behind Cloudflare
+     * Access the check needs the service token too (without it Access answers with its sign-in page, which is what made pairing fail there).
+     */
+    fun probe(url: String, cfId: String = "", cfSecret: String = ""): String? {
         return try {
-            val r = client.newCall(Request.Builder().url("$url/api/health").build()).execute()
-            r.use { val t = it.body?.string() ?: ""; if (it.isSuccessful && t.contains("\"ok\":true")) t else null }
-        } catch (e: Exception) { null }
+            val b = Request.Builder().url("$url/api/health")
+            if (cfId.isNotEmpty() && cfSecret.isNotEmpty()) b.header("CF-Access-Client-Id", cfId).header("CF-Access-Client-Secret", cfSecret)
+            client.newCall(b.build()).execute().use { r ->
+                val t = r.body?.string() ?: ""
+                val viaAccess = r.request.url.host.endsWith("cloudflareaccess.com") || r.header("cf-access-domain") != null || t.contains("cloudflareaccess", true) || r.code == 403 || r.code == 401
+                when {
+                    r.isSuccessful && t.contains("\"ok\":true") -> null
+                    viaAccess && (cfId.isEmpty() || cfSecret.isEmpty()) -> "Cloudflare Access answered instead of TurboKeep. Fill in the service token (Client ID and Secret) or use a pairing code that includes it."
+                    viaAccess -> "Cloudflare Access refused the service token (HTTP ${r.code}). Check the Client ID and Secret, and that the token is allowed by a Service Auth policy on this application."
+                    else -> "No TurboKeep answered at $url (HTTP ${r.code}). Check the address, the port, and that the phone can reach it (a home address only works on your home network)."
+                }
+            }
+        } catch (e: Exception) { "Could not reach $url: ${e.message ?: e.javaClass.simpleName}. Check the address and that the phone can reach it." }
     }
 }

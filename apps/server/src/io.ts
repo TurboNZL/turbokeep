@@ -125,7 +125,7 @@ export function exportTurboKeep(db: DB, userId: number): Uint8Array {
   }));
   const bundle: TkBundle = {
     notes,
-    tagStyles: all(db, "select title, emoji, color, keep_tasks from tags where user_id = ? and (emoji != '' or color != '' or keep_tasks = 1) order by title", userId).map((t) => ({ title: t.title, emoji: t.emoji, color: t.color, ...(t.keep_tasks ? { keepTasks: true } : {}) })),
+    tagStyles: all(db, "select title, emoji, color, keep_tasks, retired from tags where user_id = ? and (emoji != '' or color != '' or keep_tasks = 1 or retired = 1) order by title", userId).map((t) => ({ title: t.title, emoji: t.emoji, color: t.color, ...(t.keep_tasks ? { keepTasks: true } : {}), ...(t.retired ? { retired: true } : {}) })),
     customEmoji: exportEmoji(db, userId),
   };
   return buildTurboKeepZip(bundle, VERSION);
@@ -154,6 +154,7 @@ export function importTurboKeep(db: DB, user: { id: number; username: string }, 
       // tag looks: only fill in a tag that has none yet, so importing never overwrites what you chose here
       for (const t of bundle.tagStyles) run(db, "update tags set emoji = case when emoji = '' then ? else emoji end, color = case when color = '' then ? else color end where user_id = ? and title = ?", remap.get(t.emoji) ?? t.emoji, t.color, user.id, t.title);
       for (const t of bundle.tagStyles) if (t.keepTasks) run(db, 'update tags set keep_tasks = 1 where user_id = ? and title = ?', user.id, t.title);
+      for (const t of bundle.tagStyles) if (t.retired) run(db, 'update tags set retired = 1 where user_id = ? and title = ?', user.id, t.title);
       report.tags = Number(get(db, 'select count(*) c from tags where user_id = ?', user.id)!.c) - tagsBefore;
       if (dry) throw new DryRun();
     });

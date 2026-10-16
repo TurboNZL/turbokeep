@@ -18,7 +18,7 @@ export function TagPicker({ title = 'Send to tags', initial, send = true, onDone
   const [sel, setSel] = useState<string[]>(initial);
     const [draft, setDraft] = useState('');
   const toggle = (t: string) => setSel((s) => (s.includes(t) ? s.filter((x) => x !== t) : [...s, t]));
-  const shown = all.filter((t) => !draft.trim() || t.title.toLowerCase().includes(draft.trim().toLowerCase()));
+  const shown = all.filter((t) => (!t.retired || sel.includes(t.title)) && (!draft.trim() || t.title.toLowerCase().includes(draft.trim().toLowerCase())));
   return (
     <Dialog title={title} onClose={onClose}>
       <div className="space-y-4" onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onDone(sel); } }}>

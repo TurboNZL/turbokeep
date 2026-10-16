@@ -23,6 +23,8 @@ class ServerPrefs(context: Context) {
     var cfSecret: String
         get() = p.getString("cfSecret", "") ?: ""
         set(v) { p.edit().putString("cfSecret", v.trim()).apply() }
+    /** the headers that let a request through Cloudflare Access (empty when no service token is set) */
+    fun accessHeaders(): Map<String, String> = if (cfId.isNotEmpty() && cfSecret.isNotEmpty()) mapOf("CF-Access-Client-Id" to cfId, "CF-Access-Client-Secret" to cfSecret) else emptyMap()
     /** a GitHub token with read access, only needed while the repository is private */
     var updateToken: String
         get() = p.getString("updateToken", "") ?: ""

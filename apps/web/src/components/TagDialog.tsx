@@ -14,13 +14,14 @@ export function TagDialog({ tag, onClose, onDone, implied }: { tag: TagInfo; onC
   const [color, setColor] = useState(tag.color);
   const [picking, setPicking] = useState(false);
   const [keep, setKeep] = useState(!!tag.keepTasks);
+  const [retired, setRetired] = useState(!!tag.retired);
   const [error, setError] = useState('');
   async function save(e: React.FormEvent) {
     e.preventDefault(); setError('');
     try {
       const to = name.trim();
       if (to && to !== tag.title) await api.renameTag(tag.title, to);
-      await api.styleTag(to || tag.title, { emoji, color, keepTasks: keep });
+      await api.styleTag(to || tag.title, { emoji, color, keepTasks: keep, retired });
       onDone();
     } catch (err) { setError((err as Error).message); }
   }
@@ -42,6 +43,7 @@ export function TagDialog({ tag, onClose, onDone, implied }: { tag: TagInfo; onC
           </div>
         </div>
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={keep} onChange={(e) => setKeep(e.target.checked)} /><span>Archived tasks stay tasks. (Off: when you archive a task that has this tag, it is sent to the tag, so it is found there.)</span></label>
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={retired} onChange={(e) => setRetired(e.target.checked)} /><span>Don't offer this tag when adding tags. (The notes that have it keep it and it stays in the list; it just stops appearing as a suggestion. Typing its exact name still adds it.)</span></label>
         {error && <div role="alert" className="rounded-theme bg-bad/15 p-2.5 text-sm text-bad">{error}</div>}
         <div className="flex flex-wrap gap-2"><button className="btn btn-accent">Save</button><button type="button" className="btn" onClick={onClose}>Cancel</button>
           <button type="button" className="btn ml-auto text-bad" onClick={async () => { if (confirm(implied ? `Remove "${tag.title}" and every tag under it from all their notes?` : `Remove the tag "${tag.title}" from all its notes? (Tags under it stay.)`)) { await api.deleteTag(tag.title, implied); onDone(); } }}>Delete tag</button></div>

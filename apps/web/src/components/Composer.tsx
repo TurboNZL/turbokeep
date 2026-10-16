@@ -49,20 +49,21 @@ export function Composer({ tag, autoFocus, onAdded, onPopup }: { tag?: string; a
   const popping = useRef(false);
   /** after the first letter made the item: the box keeps showing `base` (what the item's title already is) until the editor has the cursor; letters typed meanwhile are passed on to it */
   const handoff = useRef<{ id: string; base: string; until: number } | null>(null);
-  const popup = async (first: string) => {
-    popping.current = true; setBusy(true);
-    try {
-      let n = await api.createNote({ title: first, text: '', tags: tag ? [tag] : [], onList: !tag });
-      // letters typed while the item was being made belong in its title too (until nothing new has arrived)
-      let sent = first;
-      while (draft.current.title.trim() && draft.current.title !== sent) { sent = draft.current.title; n = await api.updateNote(n.id, { title: sent }); }
-      handoff.current = { id: n.id, base: sent, until: Date.now() + 1500 };
-      const ending = window.setInterval(() => { const h = handoff.current; if (h && Date.now() < h.until && document.activeElement === titleEl.current) return; window.clearInterval(ending); if (handoff.current === h) { handoff.current = null; auto.current = false; setTitle(''); setText(''); draft.current = { title: '', text: '' }; } }, 40);
-      void useStore.getState().refreshMeta(); pokeWidgets(); markFresh(n.id);
-      rememberNote(n); // the editor opens from this copy in the same moment, so the cursor is in its title before the next letter
-      onAdded(excerpt(n)); wantEditorFocus(n.id); onPopup?.(n);
-    } catch (e) { toast((e as Error).message || 'Could not add that', { tone: 'bad' }); }
-    finally { popping.current = false; setBusy(false); }
+  const popup = (first: string) => {
+    // nothing waits for the server: the item is shown and its editor opens in this very keystroke; the server is told in the background (the page chose the id)
+    const stamp = new Date().toISOString();
+    const shown: Note = { id: crypto.randomUUID(), title: first, text: '', noteType: 'plain-text', pinned: false, archived: false, trashed: false, onList: !tag, dueDate: null, percentDone: 0, position: 0, tags: tag ? [tag] : [], createdAt: stamp, updatedAt: stamp, autoTitle: false };
+    popping.current = true;
+    handoff.current = { id: shown.id, base: first, until: Date.now() + 1500 };
+    const ending = window.setInterval(() => { const h = handoff.current; if (h && Date.now() < h.until && document.activeElement === titleEl.current) return; window.clearInterval(ending); if (handoff.current === h) { handoff.current = null; auto.current = false; setTitle(''); setText(''); draft.current = { title: '', text: '' }; } }, 40);
+    markFresh(shown.id);
+    rememberNote(shown); // the editor opens from this copy, so the cursor is in its title before the next letter
+    onAdded(excerpt(shown)); wantEditorFocus(shown.id); onPopup?.(shown);
+    popping.current = false;
+    api.createNoteNow(shown).then((n) => { const cur = useStore.getState().notes.find((x) => x.id === n.id); useStore.getState().upsertNote(cur ? { ...excerpt(n), title: cur.title, text: cur.text } : excerpt(n)); /* what was typed since stays */ void useStore.getState().refreshMeta(); pokeWidgets(); }).catch((e: Error) => {
+      useStore.getState().removeNote(shown.id);
+      toast(e.message || 'Could not add that', { tone: 'bad' });
+    });
   };
 
   /** keep=false: the item goes to the tags only (not on the list). Without tags it goes on the list. */
@@ -94,7 +95,7 @@ export function Composer({ tag, autoFocus, onAdded, onPopup }: { tag?: string; a
       onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node) && !pickingRef.current && !pressing.current) void commit(); }}>
       <div className="flex items-center gap-2">
         <AutoText ref={titleEl} className="input !min-h-11 max-h-48 flex-1 resize-none !py-2.5 !text-base" aria-label="Add something" placeholder={tag ? `Add to ${tag.split('.').pop()}…` : 'Add something…'} value={title} autoFocus={autoFocus}
-          enterKeyHint="done" autoComplete="off" onChange={(e) => { const h = handoff.current; if (h) { const v = e.target.value; const added = v.startsWith(h.base) ? v.slice(h.base.length) : v; if (added) typeAhead(h.id, added); setTitle(h.base); return; } if (onPopup && !title && !text && e.target.value.trim() && !popping.current) { setTitle(e.target.value); draft.current = { title: e.target.value, text: '' }; void popup(e.target.value); return; } const o = titleOverflow(e.target.value, text, e.target.selectionStart); if (o) { setTitle(o.title); setText(o.text); caret.current = o.caret; auto.current = true; } else { setTitle(e.target.value); if (popping.current) draft.current = { title: e.target.value, text: '' }; auto.current = false; } }}
+          enterKeyHint="done" autoComplete="off" onChange={(e) => { const h = handoff.current; if (h) { const v = e.target.value; const added = v.startsWith(h.base) ? v.slice(h.base.length) : v; if (added) typeAhead(h.id, added); setTitle(h.base); return; } if (onPopup && !title && !text && e.target.value.trim() && !popping.current) { setTitle(e.target.value); draft.current = { title: e.target.value, text: '' }; popup(e.target.value); return; } const o = titleOverflow(e.target.value, text, e.target.selectionStart); if (o) { setTitle(o.title); setText(o.text); caret.current = o.caret; auto.current = true; } else { setTitle(e.target.value); if (popping.current) draft.current = { title: e.target.value, text: '' }; auto.current = false; } }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void commit().then(() => titleEl.current?.focus()); } }} />
         <button type="button" tabIndex={-1} className="btn btn-accent !min-h-11 !px-3" aria-label="Add" title="Add (Enter)" disabled={busy || (!title.trim() && !text.trim())} onClick={() => void commit().then(() => titleEl.current?.focus())}><Plus size={18} /></button>
       </div>
