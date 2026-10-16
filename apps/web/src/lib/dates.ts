@@ -1,9 +1,10 @@
-/** "Today", "Tomorrow", "Mon 3 Mar", with the year when it is not this one. */
+/** "Today", "Tomorrow", "Mon 3 Mar", with the year when it is not this one. A date chosen without a time is stored at noon, and noon sharp is shown as no time. */
 export function fmtDay(iso: string | null, now = new Date()): string {
   if (!iso) return '';
   const d = new Date(iso), start = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = Math.round((start(d) - start(now)) / 86400000);
-  const time = d.getHours() || d.getMinutes() ? ` ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
+  const noTime = !d.getMinutes() && (d.getHours() === 12 || d.getHours() === 0);
+  const time = noTime ? '' : ` ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   if (diff === 0) return `Today${time}`;
   if (diff === 1) return `Tomorrow${time}`;
   if (diff === -1) return `Yesterday${time}`;
@@ -34,4 +35,10 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 export function dateTitle(d = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()} at ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** "3 Mar", with the year when it is not this one: when a note was made (always shown beside its tags). */
+export function fmtShort(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString([], { day: 'numeric', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
 }

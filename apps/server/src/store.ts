@@ -79,8 +79,8 @@ export function listNotes(db: DB, userId: number, f: NoteQuery = {}): NoteDto[] 
   else if (f.due === 'week') { where.push('n.due_date >= ? and n.due_date < ?'); args.push(startOfDay.toISOString(), endOfWeek.toISOString()); }
   else if (f.due === 'none') where.push('n.due_date is null');
   else if (f.due === 'any') where.push('n.due_date is not null');
-  // your hand-made order (pinned first); the archive and the bin show what was touched last
-  const order = view === 'archived' || view === 'trashed' ? 'n.updated_at desc' : 'n.pinned desc, n.position, n.updated_at desc';
+  // your hand-made order (pinned first), in the archive too (it is organised like Home); the bin shows what was touched last
+  const order = view === 'trashed' ? 'n.updated_at desc' : 'n.pinned desc, n.position, n.updated_at desc';
   const rows = all(db, `select n.* from notes n where ${where.join(' and ')} order by ${order}`, ...args);
   const tags = tagMap(db, userId);
   return rows.map((r) => noteDto(r, tags.get(r.id) ?? []));
@@ -192,10 +192,13 @@ export function emptyTrash(db: DB, userId: number): number {
   return n;
 }
 
-/** Tags with how many live (not archived, not binned) notes carry each. */
-export function listTags(db: DB, userId: number) {
-  return all(db, `select t.title, t.emoji, t.color, count(n.id) as count from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id and n.trashed = 0 and n.archived = 0
-    where t.user_id = ? group by t.id order by t.title`, userId).map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, count: Number(r.count) }));
+/**
+ * Tags with how many notes carry each: only notes that were sent to tags (off the task list; a tag on a task does not show the task under that tag),
+ * and only live ones (not archived, not binned), or with `archived` only the archived ones (the archive has the same tag column as Home).
+ */
+export function listTags(db: DB, userId: number, pile: 'live' | 'archived' = 'live') {
+  return all(db, `select t.title, t.emoji, t.color, count(n.id) as count from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id and n.trashed = 0 and n.archived = ? and n.on_list = 0
+    where t.user_id = ? group by t.id order by t.title`, pile === 'archived' ? 1 : 0, userId).map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, count: Number(r.count) }));
 }
 /** The look of a tag: at most one emoji (or a short symbol) and a six-digit colour without '#'; empty clears it. */
 export function styleTag(db: DB, userId: number, title: string, style: { emoji?: unknown; color?: unknown }) {

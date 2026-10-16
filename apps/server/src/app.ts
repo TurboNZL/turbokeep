@@ -133,7 +133,7 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
   // drag and drop: {above, below} are the notes that should end up directly over and under it
   app.post('/api/notes/:id/move', async (c) => { const b = await body(c); return c.json(S.moveNote(db, uid(c), c.req.param('id'), typeof b.above === 'string' ? b.above : null, typeof b.below === 'string' ? b.below : null)); });
   app.delete('/api/notes/:id', (c) => { S.deleteNote(db, uid(c), c.req.param('id')); return c.json({ ok: true }); });
-  app.get('/api/tags', (c) => c.json(S.listTags(db, uid(c))));
+  app.get('/api/tags', (c) => c.json(S.listTags(db, uid(c), c.req.query('view') === 'archived' ? 'archived' : 'live')));
   // {from, to} renames; {title, emoji, color} sets the tag's look (either may be sent, '' clears)
   app.patch('/api/tags', async (c) => {
     const b = await body(c);

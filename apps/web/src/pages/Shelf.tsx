@@ -7,8 +7,8 @@ import { useItemUi, type Pile } from '../lib/useItemUi.tsx';
 import { homeLink } from '../lib/views.ts';
 import { ItemRow } from '../components/ItemRow.tsx';
 
-/** The archive (everything you finished or put away) and the bin: the same items and the same menu as Home, without the composer. */
-export function ShelfPage({ pile }: { pile: Exclude<Pile, 'live'> }) {
+/** The bin: the same items and the same menu as Home, without the composer. (The Archive is Home's own page, see HomePage.) */
+export function ShelfPage({ pile }: { pile: 'bin' }) {
   const nav = useNavigate();
   const { notes, setNotes, setOpenNote } = useStore();
   const [loaded, setLoaded] = useState(false);
