@@ -48,6 +48,7 @@ create table if not exists tags (
   title text not null,
   emoji text not null default '',
   color text not null default '',
+  retired integer not null default 0, -- not offered when adding tags to a note
   keep_tasks integer not null default 0, -- an archived task carrying this tag stays a task (else it is sent to its tags)
   created_at text not null,
   unique (user_id, title)
@@ -141,6 +142,8 @@ export const MIGRATIONS: Migration[] = [
    create table if not exists custom_emoji (id text primary key, user_id integer not null references users(id) on delete cascade, name text not null default '', mime text not null, data blob not null, created_at text not null)`,
   // 6 -> 7: a tag can say that tasks carrying it stay tasks when they are archived (otherwise they are sent to their tags)
   'alter table tags add column keep_tasks integer not null default 0',
+  // 7 -> 8: a tag can be retired: its notes keep it, but it is not offered when you add tags to a note
+  'alter table tags add column retired integer not null default 0',
 ];
 export const SCHEMA_VERSION = 1 + MIGRATIONS.length;
 
@@ -149,7 +152,7 @@ function migrate(db: DatabaseSync) {
   // a database made before versions existed has its tables already: the shape of `tasks` says which version it is (a new one has no tables)
   if (have === 0 && db.prepare("select 1 x from sqlite_master where type = 'table' and name = 'tasks'").get())
     have = (db.prepare("select 1 x from pragma_table_info('tasks') where name = 'note_id'").get() ? (db.prepare("select 1 x from pragma_table_info('tags') where name = 'emoji'").get() ? 3 : 2) : 1);
-  else if (have === 0 && db.prepare("select 1 x from pragma_table_info('notes') where name = 'on_list'").get()) have = db.prepare("select 1 x from pragma_table_info('tags') where name = 'keep_tasks'").get() ? SCHEMA_VERSION : db.prepare("select 1 x from pragma_table_info('notes') where name = 'auto_title'").get() ? 6 : db.prepare("select 1 x from pragma_table_info('note_tags') where name = 'position'").get() ? 5 : 4;
+  else if (have === 0 && db.prepare("select 1 x from pragma_table_info('notes') where name = 'on_list'").get()) have = db.prepare("select 1 x from pragma_table_info('tags') where name = 'retired'").get() ? SCHEMA_VERSION : db.prepare("select 1 x from pragma_table_info('tags') where name = 'keep_tasks'").get() ? 7 : db.prepare("select 1 x from pragma_table_info('notes') where name = 'auto_title'").get() ? 6 : db.prepare("select 1 x from pragma_table_info('note_tags') where name = 'position'").get() ? 5 : 4;
   if (have > SCHEMA_VERSION) throw new Error(`This database is from a newer TurboKeep (schema ${have}, this server knows ${SCHEMA_VERSION}). Update the server, or restore a backup.`);
   if (have === SCHEMA_VERSION) { db.exec(`pragma user_version = ${SCHEMA_VERSION}`); return; }
   db.exec('begin immediate');

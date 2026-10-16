@@ -129,7 +129,8 @@ class MainActivity : AppCompatActivity() {
     private fun load(path: String?) {
         val base = ServerPrefs(this).serverUrl
         if (base.isEmpty()) return
-        web.loadUrl(base + (path ?: "/"))
+        // behind Cloudflare Access the service token goes with the page request; Access answers with its own cookie, which the page's later requests carry
+        web.loadUrl(base + (path ?: "/"), ServerPrefs(this).accessHeaders())
     }
 
     // a tap on a task in the widget while the app is already open

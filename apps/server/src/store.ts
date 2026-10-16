@@ -261,20 +261,20 @@ export function emptyTrash(db: DB, userId: number): number {
  * `withTasks` (a setting of the page) counts the tasks that carry the tag too.
  */
 export function listTags(db: DB, userId: number, pile: 'live' | 'archived' = 'live', withTasks = false) {
-  return all(db, `select t.title, t.emoji, t.color, t.keep_tasks, count(n.id) as count from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id and n.trashed = 0 and n.archived = ?${withTasks ? '' : ' and n.on_list = 0'}
-    where t.user_id = ? group by t.id order by t.title`, pile === 'archived' ? 1 : 0, userId).map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, count: Number(r.count), ...(r.keep_tasks ? { keepTasks: true } : {}) }));
+  return all(db, `select t.title, t.emoji, t.color, t.keep_tasks, t.retired, count(n.id) as count from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id and n.trashed = 0 and n.archived = ?${withTasks ? '' : ' and n.on_list = 0'}
+    where t.user_id = ? group by t.id order by t.title`, pile === 'archived' ? 1 : 0, userId).map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, count: Number(r.count), ...(r.keep_tasks ? { keepTasks: true } : {}), ...(r.retired ? { retired: true } : {}) }));
 }
 /** For the tag manager: every tag wherever its notes are (on Home as notes, on the task list, in the archive, in the bin), and the parents that only exist as the front of a sub-tag's name. */
 export function listTagsEverywhere(db: DB, userId: number) {
-  const rows = all(db, `select t.title, t.emoji, t.color, t.keep_tasks,
+  const rows = all(db, `select t.title, t.emoji, t.color, t.keep_tasks, t.retired,
       coalesce(sum(n.trashed = 0 and n.archived = 0 and n.on_list = 0), 0) as notes, coalesce(sum(n.trashed = 0 and n.archived = 0 and n.on_list = 1), 0) as tasks,
       coalesce(sum(n.trashed = 0 and n.archived = 1), 0) as archived, coalesce(sum(n.trashed = 1), 0) as trashed
     from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id where t.user_id = ? group by t.id order by t.title`, userId);
-  return rows.map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, notes: Number(r.notes), tasks: Number(r.tasks), archived: Number(r.archived), trashed: Number(r.trashed), ...(r.keep_tasks ? { keepTasks: true } : {}) }));
+  return rows.map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, notes: Number(r.notes), tasks: Number(r.tasks), archived: Number(r.archived), trashed: Number(r.trashed), ...(r.keep_tasks ? { keepTasks: true } : {}), ...(r.retired ? { retired: true } : {}) }));
 }
 export const CUSTOM = /^:[0-9a-f]{12}:$/;
 /** The look of a tag: at most one emoji (or a short symbol) and a six-digit colour without '#'; empty clears it. */
-export function styleTag(db: DB, userId: number, title: string, style: { emoji?: unknown; color?: unknown; keepTasks?: unknown }) {
+export function styleTag(db: DB, userId: number, title: string, style: { emoji?: unknown; color?: unknown; keepTasks?: unknown; retired?: unknown }) {
   let src = get(db, 'select id, emoji, color from tags where user_id = ? and title = ?', userId, title);
   // a parent such as `work` has no row of its own while only `work.reports` carries notes: it gets one when it is given a look
   if (!src && get(db, "select 1 x from tags where user_id = ? and substr(title, 1, ?) = ?", userId, title.length + 1, `${title}.`)) { ensureTag(db, userId, title); src = get(db, 'select id, emoji, color from tags where user_id = ? and title = ?', userId, title); }
@@ -291,6 +291,7 @@ export function styleTag(db: DB, userId: number, title: string, style: { emoji?:
   }
   run(db, 'update tags set emoji = ?, color = ? where id = ?', emoji, color, src.id);
   if (style.keepTasks !== undefined) run(db, 'update tags set keep_tasks = ? where id = ?', +!!style.keepTasks, src.id);
+  if (style.retired !== undefined) run(db, 'update tags set retired = ? where id = ?', +!!style.retired, src.id);
 }
 /** Renames a tag and everything under it (`work` -> `job` also makes `work.reports` into `job.reports`); onto an existing tag it merges. */
 export function renameTag(db: DB, userId: number, from: string, to: string) {

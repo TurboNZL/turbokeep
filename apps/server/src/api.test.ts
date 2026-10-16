@@ -417,6 +417,14 @@ describe('tag looks, list excerpts, compression', () => {
     expect((await json('PATCH', `/api/notes/${c.id}`, { archived: true })).body).toMatchObject({ archived: true, onList: true }); // no tags: stays a task
     expect((await json('GET', '/api/tags')).body.find((t: any) => t.title === 'keeper').keepTasks).toBe(true);
   });
+  it('a retired tag is flagged in the lists and survives a backup', async () => {
+    await json('POST', '/api/notes', { title: 'old', tags: ['old food'] });
+    await json('PATCH', '/api/tags', { title: 'old food', retired: true });
+    expect((await json('GET', '/api/tags')).body.find((t: any) => t.title === 'old food').retired).toBe(true);
+    expect((await json('GET', '/api/tags?view=all')).body.find((t: any) => t.title === 'old food').retired).toBe(true);
+    await json('PATCH', '/api/tags', { title: 'old food', retired: false });
+    expect((await json('GET', '/api/tags')).body.find((t: any) => t.title === 'old food').retired).toBeUndefined();
+  });
   it('exclude: and include: are -tag: and tag:', async () => {
     await json('POST', '/api/notes', { title: 'a milk', tags: ['x'] }); await json('POST', '/api/notes', { title: 'b milk', tags: ['y'] });
     const titles = async (q: string) => (await json('GET', `/api/notes?q=${encodeURIComponent(q)}`)).body.map((n: any) => n.title).sort();

@@ -4,6 +4,12 @@ export class ApiError extends Error {
   constructor(public status: number, message: string, public body?: any) { super(message); }
 }
 
+/** notes the page is making right now (see createNoteNow) */
+const makes = new Map<string, { shown: Note; done: Promise<void>; result: Promise<Note> }>();
+/** the `updatedAt` the page made up for such a note -> the one the server gave it, until the first save carries the real one */
+const swaps = new Map<string, { from: string; to: string }>();
+const created = (id: string) => makes.get(id)?.done ?? Promise.resolve();
+
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
@@ -24,8 +30,8 @@ export interface Note {
   autoTitle: boolean;
 }
 export type NotePatch = Partial<Pick<Note, 'title' | 'text' | 'noteType' | 'pinned' | 'archived' | 'trashed' | 'onList' | 'dueDate' | 'percentDone' | 'tags' | 'autoTitle'>> & { base?: string };
-export interface TagCounts { title: string; emoji: string; color: string; notes: number; tasks: number; archived: number; trashed: number; keepTasks?: boolean }
-export interface TagInfo { title: string; emoji: string; color: string; count: number; /** archived tasks carrying this tag stay tasks (they are sent to their tags otherwise) */ keepTasks?: boolean }
+export interface TagCounts { title: string; emoji: string; color: string; notes: number; tasks: number; archived: number; trashed: number; keepTasks?: boolean; retired?: boolean }
+export interface TagInfo { title: string; emoji: string; color: string; count: number; /** archived tasks carrying this tag stay tasks (they are sent to their tags otherwise) */ keepTasks?: boolean; /** not offered when adding tags to a note (its notes keep it) */ retired?: boolean }
 export interface NoteParams { excerpt?: string; view?: string; list?: string; tag?: string; untagged?: string; q?: string; due?: string }
 export interface Report { warnings: string[]; dry: boolean; [k: string]: number | string[] | boolean }
 export interface ServerUpdate { available: boolean; restarts: boolean; status: 'idle' | 'running' | 'done' | 'error'; log: string[]; startedAt: number | null; restarting: boolean }
@@ -45,19 +51,33 @@ export const api = {
   deleteToken: (id: string) => req<unknown>('DELETE', `/api/tokens/${id}`),
 
   notes: (p: NoteParams = {}) => req<Note[]>('GET', `/api/notes?${new URLSearchParams(Object.entries(p).filter(([, v]) => v) as [string, string][])}`),
-  note: (id: string) => req<Note>('GET', `/api/notes/${id}`),
-  noteOrNull: (id: string) => req<Note>('GET', `/api/notes/${id}`).catch(() => null),
-  createNote: (n: Partial<Omit<Note, 'id' | 'createdAt' | 'updatedAt' | 'position'>>) => req<Note>('POST', '/api/notes', n),
-  updateNote: (id: string, n: NotePatch) => req<Note>('PATCH', `/api/notes/${id}`, n),
+  note: async (id: string) => { await created(id); return req<Note>('GET', `/api/notes/${id}`); },
+  noteOrNull: async (id: string) => { await created(id); return req<Note>('GET', `/api/notes/${id}`).catch(() => null); },
+  createNote: (n: Partial<Omit<Note, 'id' | 'createdAt' | 'updatedAt' | 'position'>> & { id?: string }) => req<Note>('POST', '/api/notes', n),
+  /** make a note whose editor is already open: the page chose the id and the note it shows (`shown`); anything sent for that id waits for the server to have it */
+  createNoteNow: (shown: Note) => {
+    const p = req<Note>('POST', '/api/notes', { id: shown.id, title: shown.title, text: shown.text, tags: shown.tags, onList: shown.onList, noteType: shown.noteType });
+    makes.set(shown.id, { shown, done: p.then(() => undefined, () => undefined), result: p });
+    void p.then((made) => { swaps.set(shown.id, { from: shown.updatedAt, to: made.updatedAt }); makes.delete(shown.id); }, () => makes.delete(shown.id));
+    return p;
+  },
+  updateNote: async (id: string, n: NotePatch) => {
+    const m = makes.get(id);
+    if (m) await m.result.catch(() => undefined);
+    // the editor's copy of `updatedAt` is the one the page made up: swap in the server's (also after the note has been made)
+    const sw = swaps.get(id);
+    if (sw && n.base === sw.from) n = { ...n, base: sw.to };
+    return req<Note>('PATCH', `/api/notes/${id}`, n);
+  },
   /** drag and drop: the notes that should end up directly above and below this one */
-  moveNote: (id: string, above: string | null, below: string | null) => req<Note>('POST', `/api/notes/${id}/move`, { above, below }),
+  moveNote: async (id: string, above: string | null, below: string | null) => { await created(id); return req<Note>('POST', `/api/notes/${id}/move`, { above, below }); },
   deleteNote: (id: string) => req<unknown>('DELETE', `/api/notes/${id}`),
   emptyTrash: () => req<{ deleted: number }>('POST', '/api/notes/empty-trash'),
   tags: (pile: 'live' | 'archived' = 'live', withTasks = false) => req<TagInfo[]>('GET', `/api/tags?${pile === 'archived' ? 'view=archived&' : ''}${withTasks ? 'tasks=1' : ''}`.replace(/[?&]$/, '')),
   emoji: () => req<{ id: string; name: string }[]>('GET', '/api/emoji'),
   addEmoji: (name: string, data: string) => req<{ id: string; name: string }>('POST', '/api/emoji', { name, data }),
   deleteEmoji: (id: string) => req<unknown>('DELETE', `/api/emoji/${id}`),
-  styleTag: (title: string, look: { emoji?: string; color?: string; keepTasks?: boolean }) => req<unknown>('PATCH', '/api/tags', { title, ...look }),
+  styleTag: (title: string, look: { emoji?: string; color?: string; keepTasks?: boolean; retired?: boolean }) => req<unknown>('PATCH', '/api/tags', { title, ...look }),
   renameTag: (from: string, to: string) => req<unknown>('PATCH', '/api/tags', { from, to }),
   deleteTag: (title: string, tree = false) => req<unknown>('DELETE', `/api/tags?title=${encodeURIComponent(title)}${tree ? '&tree=1' : ''}`),
   /** every tag wherever its notes are (the tag manager) */

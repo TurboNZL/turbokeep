@@ -126,7 +126,13 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
     // the list only needs a preview of each text (the open note is fetched whole): `excerpt=1` keeps the answer small on a big library
     return c.json(q.excerpt === '1' ? list.map((n) => (n.text.length > 400 ? { ...n, text: n.text.slice(0, 400) } : n)) : list);
   });
-  app.post('/api/notes', async (c) => c.json(S.createNote(db, uid(c), await body(c)), 201));
+  // the page may choose the id of a note it makes (a UUID), so it can open the editor before the server has answered
+  app.post('/api/notes', async (c) => {
+    const b = await body(c);
+    const id = typeof b.id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(b.id) ? b.id.toLowerCase() : undefined;
+    if (id && db.prepare('select 1 x from notes where id = ?').get(id)) throw new S.HttpError(409, 'That id is taken');
+    return c.json(S.createNote(db, uid(c), b, id ? { id } : undefined), 201);
+  });
   app.post('/api/notes/empty-trash', (c) => c.json({ deleted: S.emptyTrash(db, uid(c)) }));
   app.get('/api/notes/:id', (c) => c.json(S.getNote(db, uid(c), c.req.param('id'))));
   app.patch('/api/notes/:id', async (c) => { const b = await body(c); return c.json(S.updateNote(db, uid(c), c.req.param('id'), b, typeof b.base === 'string' ? b.base : undefined)); });
@@ -151,7 +157,7 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
   app.patch('/api/tags', async (c) => {
     const b = await body(c);
     if (b.from !== undefined) S.renameTag(db, uid(c), String(b.from), String(b.to ?? ''));
-    if (b.emoji !== undefined || b.color !== undefined || b.keepTasks !== undefined) S.styleTag(db, uid(c), String(b.title ?? b.to ?? b.from ?? ''), b);
+    if (b.emoji !== undefined || b.color !== undefined || b.keepTasks !== undefined || b.retired !== undefined) S.styleTag(db, uid(c), String(b.title ?? b.to ?? b.from ?? ''), b);
     return c.json({ ok: true });
   });
   app.delete('/api/tags', (c) => { S.deleteTag(db, uid(c), c.req.query('title') ?? '', c.req.query('tree') === '1'); return c.json({ ok: true }); });

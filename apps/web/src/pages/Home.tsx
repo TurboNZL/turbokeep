@@ -30,7 +30,8 @@ import { useWide } from '../lib/useWide.ts';
 const PAGE = 40;
 const SCOPE_NAMES = { list: 'Tasks', all: 'All notes', due: 'Due soon' } as const;
 /** the editor panel stays on screen while the list scrolls */
-const STICKY = 'md:sticky md:top-20 md:self-start md:max-h-[calc(100dvh-6.5rem-var(--dock-h,0px))] md:overflow-y-auto';
+/** the editor column: as tall as the window above the dock, the editor scrolling inside it and the close bar fixed to its bottom edge */
+const STICKY = 'md:sticky md:top-20 md:self-start md:flex md:h-[calc(100dvh-6.5rem-var(--dock-h,0px))] md:flex-col';
 
 /** What each filter last showed: coming back to Home (from Settings, say) draws the list at once and updates it behind the scenes. */
 const memo = { has: (k: string) => recall<Note[]>(`notes:${k}`) !== undefined, get: (k: string) => recall<Note[]>(`notes:${k}`), set: (k: string, v: Note[]) => remember(`notes:${k}`, v) };
@@ -183,7 +184,7 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   const panel = (
     <div className="relative min-w-0">
       <Divider side="left" lit={foreign} label="Drag to change the width of the editor" onSize={(x, box) => updateSettings({ paneWidth: Math.round(Math.min(SIZE_LIMITS.paneWidth.max, Math.max(SIZE_LIMITS.paneWidth.min, (box.right - x) / rem()))) })} />
-      <div key={id} className={cn(STICKY, 'tk-slide-in')}>{editor}<CloseBar onClose={close} /></div>
+      <div key={id} className={cn(STICKY, 'tk-slide-in')}><div className="md:min-h-0 md:flex-1 md:overflow-y-auto">{editor}</div><CloseBar onClose={close} /></div>
     </div>);
   return (
     <>
@@ -195,7 +196,7 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
           {(wide || !id) && list}
           {id ? <div className="relative min-w-0 md:col-start-2 md:row-start-2 lg:col-start-3 lg:row-start-1">
             {wide && <Divider side="left" lit={foreign} label="Drag to change the width of the list" onSize={(x) => { const l = listRef.current?.getBoundingClientRect(); if (l) updateSettings({ listWidth: Math.round(Math.min(SIZE_LIMITS.listWidth.max, Math.max(SIZE_LIMITS.listWidth.min, (x - l.left) / rem()))) }); }} />}
-            <div key={id} className={cn(STICKY, 'tk-slide-in')}>{editor}<CloseBar onClose={close} /></div></div>
+            <div key={id} className={cn(STICKY, 'tk-slide-in')}><div className="md:min-h-0 md:flex-1 md:overflow-y-auto">{editor}</div><CloseBar onClose={close} /></div></div>
             : wide && !idleFull && <Overview notes={visible} filter={filter} archive={archive} onOpen={(nid) => go(nid)} />}
         </div>)}
       {keep && !pane && id && <Dialog title="Note" wide onClose={close}>{editor}</Dialog>}
@@ -246,5 +247,5 @@ function Wall({ items, render, minRem, gapRem }: { items: Note[]; render: (n: No
 
 /** A red-tinted bar along the bottom of the editor column, just above the dock, that closes the editor (it sticks to the bottom while the editor scrolls). */
 function CloseBar({ onClose }: { onClose: () => void }) {
-  return <button type="button" onClick={onClose} className="sticky bottom-0 z-10 mt-3 flex w-full items-center justify-center gap-2 rounded-theme border border-bad/40 bg-bad/15 py-2.5 text-sm font-medium text-bad backdrop-blur transition-colors hover:bg-bad/25" aria-label="Close the editor"><X size={16} />Close the editor</button>;
+  return <button type="button" onClick={onClose} className="sticky bottom-0 z-10 mt-3 flex w-full shrink-0 items-center justify-center gap-2 rounded-theme border border-line bg-raised/80 py-2.5 text-sm font-medium text-muted backdrop-blur transition-colors hover:bg-raised hover:text-fg md:mt-2" aria-label="Close the editor"><X size={16} />Close the editor</button>;
 }
