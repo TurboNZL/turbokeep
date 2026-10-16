@@ -133,7 +133,7 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
   // drag and drop: {above, below} are the notes that should end up directly over and under it
   app.post('/api/notes/:id/move', async (c) => { const b = await body(c); return c.json(S.moveNote(db, uid(c), c.req.param('id'), typeof b.above === 'string' ? b.above : null, typeof b.below === 'string' ? b.below : null)); });
   app.delete('/api/notes/:id', (c) => { S.deleteNote(db, uid(c), c.req.param('id')); return c.json({ ok: true }); });
-  app.get('/api/tags', (c) => c.json(S.listTags(db, uid(c), c.req.query('view') === 'archived' ? 'archived' : 'live')));
+  app.get('/api/tags', (c) => c.json(c.req.query('view') === 'all' ? S.listTagsEverywhere(db, uid(c)) : S.listTags(db, uid(c), c.req.query('view') === 'archived' ? 'archived' : 'live')));
   // {from, to} renames; {title, emoji, color} sets the tag's look (either may be sent, '' clears)
   app.patch('/api/tags', async (c) => {
     const b = await body(c);
@@ -141,7 +141,7 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
     if (b.emoji !== undefined || b.color !== undefined) S.styleTag(db, uid(c), String(b.title ?? b.to ?? b.from ?? ''), b);
     return c.json({ ok: true });
   });
-  app.delete('/api/tags', (c) => { S.deleteTag(db, uid(c), c.req.query('title') ?? ''); return c.json({ ok: true }); });
+  app.delete('/api/tags', (c) => { S.deleteTag(db, uid(c), c.req.query('title') ?? '', c.req.query('tree') === '1'); return c.json({ ok: true }); });
 
   // ---- import and export ----
   const stamp = () => new Date().toISOString().slice(0, 10);

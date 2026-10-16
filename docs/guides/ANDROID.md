@@ -9,13 +9,16 @@ TurboKeep for Android is a small app that opens **your server's** page full scre
 
 The app checks for a newer release when it opens and offers it in **Settings > This app > Android app**; Android always asks you to confirm an install. While the repository is private, that card has a field for a GitHub token with read access.
 
-## The widget
-Long-press the home screen, **Widgets**, **TurboKeep list**. It shows your **Home list in your own order** (the order you dragged things into in the app; pinned first; overdue dates in red).
-- **Refresh** is the circle arrow on the left. It always works, even when the list is empty, and says what happened ("Updated", or "Could not reach the server"). The widget also refreshes by itself every 30 minutes, whenever you change something in the app, and whenever you leave the app.
-- The **title** in the middle opens the widget's settings: **text size**, the **space between items** and the **order** (*My order*, newest first, due date, A to Z). Changes show at once. It also has an *Open TurboKeep* button.
-- **+** on the right adds something without opening the app (the first line is the title, the rest the description); it goes on the list like anything typed in the app.
-- **Tap an item** and it opens up a little: its description and two big buttons, **Complete** (finishes it) and **Save to memory** (opens the app on that item with the tag picker ready, so you can file it under tags). Tap it again to close it. The **checkbox** on the left finishes it straight away.
+## The widgets
+Long-press the home screen, **Widgets**, **TurboKeep**. There are two.
+
+**TurboKeep list** shows your **tasks in your own order** (the order you dragged things into in the app; pinned first; overdue dates in red), or **the notes of one tag**. Every pixel is items, each in its own outlined card; two small round buttons float over the corners:
+- **Open** (top right) opens the widget's settings in a small window (tap anywhere outside it to close it): **Show** (tasks, or a tag), **text size** (down to 50%), the **space between items** (down to -10 dp: below 0 the cards lose their own padding, a list cannot overlap its rows, so at the lowest they touch), the **order**, and **Open TurboKeep**, **Add something** and **Server and Cloudflare Access**. If you turn off *The open button shows these settings first*, the button goes straight into the app; the settings are then one long press on the widget away (**Reconfigure**, Android 12 and later). The same window opens when you add the widget, so you pick tasks or a tag right then.
+- **Refresh** (bottom right) always works, even when the list is empty, shows a spinner while it runs and says what happened ("Updated", or "Could not reach the server"). The widget also refreshes by itself every 30 minutes, whenever you change something in the app, and whenever you leave the app.
+- **Tap an item** and it opens over the **whole widget** (no scrolling, the buttons are hidden): its description, with two buttons floating over the text. For tasks: **Complete** (top right; finishes it) and **Send to tags** (bottom right; opens the app on that item with the tag picker ready). For a tag's notes: **Archive** and **Send to tasks**. **Tap the text** to close it again; it never opens the app.
 - It needs an API token, which the app makes by itself the first time you sign in (you will see "Android app" under Settings > Account > API tokens; delete it to sign the widget out), or which comes with a pairing code (below). If the widget says to sign in, open the app once.
+
+**TurboKeep note** shows **one note**, chosen when you add it (or later with Reconfigure), as lines that scroll when the note is long. **Open** (top right) opens that note in the app; **Refresh** (bottom right) as above.
 
 ## Pair the phone with a code
 Settings > This app > **Pair a phone** (on a computer, signed in) makes a **pairing code**: the server's address (type the one that works from the phone, the tunnel address if it is on mobile data), a token of its own named *Paired device* and, if you use Cloudflare Access, the service token's Client ID and Secret. On the phone's first screen (or *Change server*) paste it under **Pairing code**, press **Use code**, then **Connect**. The code *is* the credentials: send it only to yourself, and delete the *Paired device* token under Account > API tokens if it leaks.

@@ -1,101 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- one row of the list: an outlined card, no checkbox (open it up to complete it). `outer` carries the space between items, `card` the padding inside. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/outer"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:paddingTop="1dp"
+    android:paddingBottom="1dp">
 
     <LinearLayout
+        android:id="@+id/card"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:minHeight="44dp"
-        android:orientation="horizontal">
+        android:background="@drawable/widget_item_bg"
+        android:orientation="vertical"
+        android:paddingStart="10dp"
+        android:paddingTop="5dp"
+        android:paddingEnd="10dp"
+        android:paddingBottom="5dp">
 
-        <!-- finishes it straight away -->
-        <ImageView
-            android:id="@+id/check"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:contentDescription="Complete"
-            android:padding="11dp"
-            android:src="@drawable/ic_w_check_off" />
-
-        <!-- a tap on the text opens the item up a little (the description and two big buttons) -->
-        <LinearLayout
-            android:id="@+id/body"
-            android:layout_width="0dp"
+        <TextView
+            android:id="@+id/item_title"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:paddingTop="6dp"
-            android:paddingEnd="8dp"
-            android:paddingBottom="6dp">
-
-            <TextView
-                android:id="@+id/item_title"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="2"
-                android:textColor="@color/widget_text"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/item_meta"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="@color/widget_muted"
-                android:textSize="11sp" />
-
-            <TextView
-                android:id="@+id/item_desc"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:ellipsize="end"
-                android:maxLines="8"
-                android:textColor="@color/widget_muted"
-                android:textSize="12sp"
-                android:visibility="gone" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <!-- shown only while the item is open: the two big buttons -->
-    <LinearLayout
-        android:id="@+id/actions"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingTop="2dp"
-        android:paddingEnd="8dp"
-        android:paddingBottom="8dp"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/btn_done"
-            android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_marginEnd="4dp"
-            android:layout_weight="1"
-            android:background="@drawable/widget_btn_primary"
-            android:gravity="center"
-            android:text="Complete"
-            android:textColor="@color/widget_btn_text"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/btn_memory"
-            android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_marginStart="4dp"
-            android:layout_weight="1"
-            android:background="@drawable/widget_btn_secondary"
-            android:gravity="center"
-            android:text="Save to memory"
+            android:ellipsize="end"
+            android:includeFontPadding="false"
+            android:maxLines="3"
             android:textColor="@color/widget_text"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/item_meta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:textColor="@color/widget_muted"
+            android:textSize="11sp" />
     </LinearLayout>
 </LinearLayout>

@@ -1,13 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- configure: opens when the widget is added (choose Tasks or a tag) and from the widget's Reconfigure entry (long press), which is also the way back to the settings when the open button is set to go straight to the app -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:configure="app.turbokeep.android.WidgetSettingsActivity"
     android:description="@string/widget_description"
     android:initialLayout="@layout/widget_tasks"
-    android:minWidth="180dp"
-    android:minHeight="180dp"
-    android:minResizeWidth="110dp"
-    android:minResizeHeight="110dp"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="40dp"
+    android:minResizeHeight="40dp"
     android:resizeMode="horizontal|vertical"
     android:targetCellWidth="3"
     android:targetCellHeight="3"
     android:updatePeriodMillis="1800000"
-    android:widgetCategory="home_screen" />
+    android:widgetCategory="home_screen"
+    tools:targetApi="s"
+    android:widgetFeatures="reconfigurable" />

@@ -1,6 +1,7 @@
 import { CalendarClock, CheckSquare, FileText, Pencil, Tag } from 'lucide-react';
 import { cn } from '../lib/cn.ts';
 import type { TagInfo } from '../lib/api.ts';
+import type { RailTag } from '../lib/tagTree.ts';
 import type { HomeFilter, Scope } from '../lib/views.ts';
 
 /**
@@ -9,12 +10,12 @@ import type { HomeFilter, Scope } from '../lib/views.ts';
  * ("work" shows "work.reports"). Its height stops above the dock, so the last tags can always be reached.
  */
 export function TagRail({ tags, filter, onScope, onTag, onEditTag, counts, archive }: {
-  tags: TagInfo[]; filter: HomeFilter; /** the Archive: no "Due soon" (finished things are not due) */ archive?: boolean; onScope: (s: Scope) => void; onTag: (t: string) => void; onEditTag: (t: TagInfo) => void; counts: { list: number | null };
+  tags: RailTag[]; filter: HomeFilter; /** the Archive: no "Due soon" (finished things are not due) */ archive?: boolean; onScope: (s: Scope) => void; onTag: (t: string) => void; onEditTag: (t: TagInfo) => void; counts: { list: number | null };
 }) {
   const chip = 'flex min-h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-theme px-2.5 py-1.5 text-left text-sm hover:bg-raised max-lg:border max-lg:border-line max-lg:py-1 lg:w-full';
   const on = (s: Scope) => !filter.tag && filter.scope === s;
   const every: { id: Scope; label: string; icon: typeof Tag; n?: number | null }[] = [
-    { id: 'list', label: 'Tasks', icon: CheckSquare, n: counts.list }, { id: 'all', label: 'All notes', icon: FileText }, { id: 'due', label: 'Due soon', icon: CalendarClock },
+    { id: 'list', label: archive ? 'Old Tasks' : 'Tasks', icon: CheckSquare, n: counts.list }, { id: 'all', label: 'All notes', icon: FileText }, { id: 'due', label: 'Due soon', icon: CalendarClock },
   ];
   const scopes = every.filter((s) => !(archive && s.id === 'due'));
   return (
@@ -32,7 +33,7 @@ export function TagRail({ tags, filter, onScope, onTag, onEditTag, counts, archi
             <button onClick={() => onTag(sel ? '' : t.title)} aria-current={sel || undefined} title={t.title} className={cn(chip, 'lg:pr-9', sel && 'bg-raised pr-7 font-medium text-accent')}
               style={t.color ? { boxShadow: `inset 4px 0 0 #${t.color}`, paddingLeft: '0.9rem' } : undefined}>
               {t.emoji && <span aria-hidden>{t.emoji}</span>}
-              <span className="min-w-0 flex-1 truncate" style={{ paddingLeft: `${depth * 0.75}rem` }}>{t.title.split('.').pop()}</span><span className="text-xs text-muted">{t.count}</span>
+              <span className="min-w-0 flex-1 truncate" style={{ paddingLeft: `${depth * 0.75}rem` }}>{t.title.split('.').pop()}</span><span className="text-xs text-muted">{t.total}</span>
             </button>
             <button className={cn('absolute right-1 rounded p-1.5 text-muted hover:text-fg', sel ? 'block' : 'hidden lg:group-hover:block lg:group-focus-within:block')} onClick={() => onEditTag(t)} aria-label={`Edit tag ${t.title}`} title="Emoji, colour, name"><Pencil size={13} /></button>
           </div>);

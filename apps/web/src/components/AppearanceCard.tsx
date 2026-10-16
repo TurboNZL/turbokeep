@@ -7,7 +7,7 @@ import { cn } from '../lib/cn.ts';
 import { clearCustomWallpaper, deviceLook, effectiveUi, getCustomImage, isUiStyle, listStyles, listThemes, resolveTheme, saveCustomWallpaper, themeStyle, themeWallpaper } from 'turbothemes';
 import { useCatalog } from '../lib/useCatalog.ts';
 import { LAYOUTS } from '../lib/layout.ts';
-import { DEFAULT_SETTINGS, SIZE_LIMITS, type DeviceSettings } from '../lib/settings.ts';
+import { DEFAULT_SETTINGS, SIZE_LIMITS, type DeviceSettings, type ViewStyle } from '../lib/settings.ts';
 import { ThemeUpdates } from './ThemeUpdates.tsx';
 
 type ThemeId = string;
@@ -245,13 +245,26 @@ export function DivisionSizeSection() {
   );
 }
 
-/** Google Keep view: Home shows the notes as a wall of cards instead of a list with the editor beside it. Right below the layouts. */
-export function KeepViewSection() {
+const VIEW_STYLES: { id: ViewStyle; label: string; text: string }[] = [
+  { id: 'list', label: 'List', text: 'A column of items with the open item beside it.' },
+  { id: 'wall', label: 'Keep wall', text: 'Cards like Google Keep. A card opens the item in a window.' },
+  { id: 'pane', label: 'Keep wall + panel', text: 'Cards like Google Keep. A card opens the item in a panel on the right (a window on a narrow screen).' },
+];
+
+/** How Home shows items: a list, a Google Keep wall of cards with a window, or the wall with the editor in a panel on the right. */
+export function ViewStyleSection() {
   const { settings, updateSettings } = useStore();
+  const cur = VIEW_STYLES.find((v) => v.id === settings.viewStyle) ?? VIEW_STYLES[0]!;
   return (
-    <Section title="Google Keep view">
-      <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={settings.keepView} onChange={(e) => updateSettings({ keepView: e.target.checked })} />
-        <span>Show notes as a wall of cards, like Google Keep. A card opens the note in a window; tags and the views keep working.</span></label>
+    <Section title="View">
+      <div role="radiogroup" aria-label="View" className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-1.5">
+        {VIEW_STYLES.map((v) => (
+          <button key={v.id} type="button" role="radio" aria-checked={cur.id === v.id} title={v.text} onClick={() => updateSettings({ viewStyle: v.id })}
+            className={cn('rounded-theme border bg-raised/40 px-2.5 py-1.5 text-left transition-colors hover:border-accent', cur.id === v.id ? 'border-accent ring-1 ring-accent' : 'border-line')}>
+            <span className="flex items-center justify-between gap-2"><span className="min-w-0 truncate text-xs font-medium">{v.label}</span>{cur.id === v.id && <Check size={12} className="shrink-0 text-accent" />}</span>
+          </button>))}
+      </div>
+      <p className="rounded-theme bg-raised/50 px-3 py-2 text-xs leading-snug text-muted"><span className="font-medium text-fg">{cur.label}: </span>{cur.text} Tags and the views keep working in all of them.</p>
     </Section>
   );
 }
@@ -260,7 +273,7 @@ export function KeepViewSection() {
 export function AppearanceLayout() {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
-      <div className="min-w-0 space-y-5"><LayoutSection /><DivisionSizeSection /><KeepViewSection /><ColourThemeSection /><UiStyleSection /><ThemeUpdates /></div>
+      <div className="min-w-0 space-y-5"><LayoutSection /><ViewStyleSection /><DivisionSizeSection /><ColourThemeSection /><UiStyleSection /><ThemeUpdates /></div>
       <AppearancePreview />
     </div>
   );

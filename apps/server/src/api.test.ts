@@ -271,7 +271,7 @@ describe('TurboKeep backup', () => {
     const j = JSON.parse(new TextDecoder().decode(unzipSync(await exportZip())['turbokeep.json']));
     expect(j).toMatchObject({ format: 'turbokeep', version: 2 });
     expect(j.notes).toHaveLength(4);
-    expect(j.notes.find((n: any) => n.title === 'Write report')).toMatchObject({ onList: true, dueDate: '2031-03-04T05:06:07.000Z', percentDone: 0.5, tags: ['urgent', 'work'] });
+    expect(j.notes.find((n: any) => n.title === 'Write report')).toMatchObject({ onList: true, dueDate: '2031-03-04T05:06:07.000Z', percentDone: 0.5, tags: ['work', 'urgent'] }); // in the order they were given
     expect(j.projects).toBeUndefined();
   });
   it('into another account: the same notes, the list, dates, progress, tags and the order', async () => {
@@ -304,7 +304,7 @@ describe('TurboKeep backup', () => {
     expect(r).toMatchObject({ notes: 2 });
     expect(r.warnings.join(' ')).toMatch(/relation/);
     const t = (await json('GET', `/api/notes/${id}`)).body;
-    expect(t).toMatchObject({ onList: true, archived: true, pinned: true, percentDone: 0.5, dueDate: '2031-01-01T00:00:00.000Z', tags: ['Work.Sub', 't'] });
+    expect(t).toMatchObject({ onList: true, archived: true, pinned: true, percentDone: 0.5, dueDate: '2031-01-01T00:00:00.000Z', tags: ['t', 'Work.Sub'] });
     expect(t.text).toContain('--- Comments ---');
     expect(t.text).toContain('me, 2030-01-02: hello');
     expect((await json('GET', `/api/notes/${id2}`)).body.onList).toBe(false);
@@ -329,17 +329,14 @@ async function second2() {
 }
 
 describe('tag looks, list excerpts, compression', () => {
-  it('a tag can get an emoji and a colour, and keeps them when its last note goes', async () => {
+  it('a tag can get an emoji and a colour; with its last note it is deleted, look and all', async () => {
     const n = (await json('POST', '/api/notes', { title: 'a', tags: ['work.reports'] })).body;
     expect((await json('PATCH', '/api/tags', { title: 'work.reports', emoji: '📊', color: '#FF8800' })).status).toBe(200);
     expect((await json('GET', '/api/tags')).body).toEqual([{ title: 'work.reports', emoji: '📊', color: 'ff8800', count: 1 }]);
     expect((await json('PATCH', '/api/tags', { title: 'work.reports', color: 'orange' })).status).toBe(400);
     expect((await json('PATCH', '/api/tags', { title: 'nope', emoji: 'x' })).status).toBe(404);
     await json('PATCH', `/api/notes/${n.id}`, { tags: [] });
-    expect((await json('GET', '/api/tags')).body).toEqual([{ title: 'work.reports', emoji: '📊', color: 'ff8800', count: 0 }]); // styled: kept
-    await json('PATCH', '/api/tags', { title: 'work.reports', emoji: '', color: '' });
-    await json('PATCH', `/api/notes/${n.id}`, { tags: ['x'] }); await json('PATCH', `/api/notes/${n.id}`, { tags: [] });
-    expect((await json('GET', '/api/tags')).body).toEqual([]); // plain: removed with its last note
+    expect((await json('GET', '/api/tags')).body).toEqual([]); // nothing carries it any more: gone, look included
   });
   it('a tag counts only what was sent to tags: a task that carries the tag does not, and the archive has its own counts', async () => {
     await json('POST', '/api/notes', { title: 'filed', tags: ['t'], onList: false });
@@ -357,6 +354,48 @@ describe('tag looks, list excerpts, compression', () => {
     expect((await json('GET', '/api/notes?view=archived')).body.map((n: any) => n.title)).toEqual(['a', 'b']);
     await json('POST', `/api/notes/${b.id}/move`, { above: null, below: a.id });
     expect((await json('GET', '/api/notes?view=archived')).body.map((n: any) => n.title)).toEqual(['b', 'a']);
+  });
+  it('tags on a note keep the order they were given, and a parent lives while a sub-tag has notes', async () => {
+    const n = (await json('POST', '/api/notes', { title: 'a', tags: ['zeta', 'alpha.beta', 'mid'] })).body;
+    expect(n.tags).toEqual(['zeta', 'alpha.beta', 'mid']);
+    expect((await json('PATCH', `/api/notes/${n.id}`, { tags: ['mid', 'zeta', 'alpha.beta'] })).body.tags).toEqual(['mid', 'zeta', 'alpha.beta']);
+    expect((await json('PATCH', '/api/tags', { title: 'alpha', emoji: '🅰️' })).status).toBe(200); // the parent has no notes of its own: it gets a row to hold its look
+    await json('PATCH', `/api/notes/${n.id}`, { tags: ['mid', 'alpha.beta'] });
+    expect((await json('GET', '/api/tags')).body.map((t: any) => t.title)).toEqual(['alpha', 'alpha.beta', 'mid']);
+    await json('PATCH', `/api/notes/${n.id}`, { tags: ['mid'] });
+    expect((await json('GET', '/api/tags')).body.map((t: any) => t.title)).toEqual(['mid']); // neither the parent nor the child is left
+  });
+  it('renaming a parent renames what is under it; the tag manager sees every pile', async () => {
+    await json('POST', '/api/notes', { title: 'a', tags: ['work.reports'], onList: false });
+    await json('POST', '/api/notes', { title: 'b', tags: ['work'], onList: true });
+    await json('POST', '/api/notes', { title: 'c', tags: ['work.old'], archived: true });
+    await json('POST', '/api/notes', { title: 'd', tags: ['work.old'], trashed: true });
+    await json('PATCH', '/api/tags', { from: 'work', to: 'job' });
+    expect((await json('GET', '/api/tags?view=all')).body).toEqual([
+      { title: 'job', emoji: '', color: '', notes: 0, tasks: 1, archived: 0, trashed: 0 },
+      { title: 'job.old', emoji: '', color: '', notes: 0, tasks: 0, archived: 1, trashed: 1 },
+      { title: 'job.reports', emoji: '', color: '', notes: 1, tasks: 0, archived: 0, trashed: 0 }]);
+    await json('DELETE', '/api/tags?title=job&tree=1');
+    expect((await json('GET', '/api/tags?view=all')).body).toEqual([]);
+  });
+  it('the search language: words, tag:, -tag:, before:, after:, is:, has:', async () => {
+    const mk = async (title: string, o: any = {}) => (await json('POST', '/api/notes', { title, ...o })).body;
+    await mk('milk run', { tags: ['home', 'shop'], onList: true, dueDate: '2031-01-01T12:00:00Z' });
+    await mk('milk powder', { tags: ['shop.food'] });
+    await mk('old milk', { tags: ['home.old'], noteType: 'markdown' });
+    const titles = async (q: string) => (await json('GET', `/api/notes?q=${encodeURIComponent(q)}`)).body.map((n: any) => n.title).sort();
+    expect(await titles('milk')).toEqual(['milk powder', 'milk run', 'old milk']);
+    expect(await titles('milk tag:shop')).toEqual(['milk powder', 'milk run']); // a tag also finds what is under it
+    expect(await titles('milk tag:shop tag:home')).toEqual(['milk run']); // several tags: all of them
+    expect(await titles('milk -tag:home')).toEqual(['milk powder']); // excludes the sub-tag too
+    expect(await titles('tag:"home.old"')).toEqual(['old milk']);
+    expect(await titles('is:task')).toEqual(['milk run']);
+    expect(await titles('milk -is:task is:markdown')).toEqual(['old milk']);
+    expect(await titles('has:date')).toEqual(['milk run']);
+    expect(await titles('milk before:2000')).toEqual([]);
+    expect(await titles(`milk after:2000 before:${new Date().getUTCFullYear() + 1}`)).toEqual(['milk powder', 'milk run', 'old milk']);
+    expect(await titles('"milk run"')).toEqual(['milk run']);
+    expect(await titles('before:never')).toEqual([]); // a filter that makes no sense is a word nobody has
   });
   it('renaming onto an existing tag keeps a look', async () => {
     await json('POST', '/api/notes', { title: 'a', tags: ['one'] }); await json('POST', '/api/notes', { title: 'b', tags: ['two'] });

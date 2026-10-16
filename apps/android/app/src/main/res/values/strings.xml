@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">TurboKeep</string>
     <string name="widget_name">TurboKeep list</string>
-    <string name="widget_description">Your list in your own order. Tap an item to open it up, complete it or save it to memory.</string>
+    <string name="widget_description">Your tasks, or the notes of one tag. Tap an item to open it up and complete it or send it on.</string>
+    <string name="note_widget_name">TurboKeep note</string>
+    <string name="note_widget_description">One note, always on your home screen.</string>
 </resources>

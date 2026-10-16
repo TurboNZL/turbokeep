@@ -1,5 +1,5 @@
 import { useCallback, useState, type ReactNode } from 'react';
-import { Archive, ArchiveRestore, CalendarDays, CheckCircle2, Download, ExternalLink, Link2, ListChecks, ListX, Pin, PinOff, RotateCcw, Tags, Trash2, Undo2 } from 'lucide-react';
+import { Archive, ArchiveRestore, CalendarDays, CheckCircle2, Download, ExternalLink, Link2, ListChecks, Pin, PinOff, RotateCcw, Tags, Trash2, Undo2 } from 'lucide-react';
 import { api, saveBlob, type Note } from './api.ts';
 import { useStore } from './store.ts';
 import { copyNoteLink, patchNote } from './actions.ts';
@@ -22,7 +22,7 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export function useItemUi({ pile, open, closeIfOpen }: { pile: Pile; open: (id: string) => void; closeIfOpen: (id: string) => void }) {
   const toast = useStore((s) => s.toast);
   const [menu, setMenu] = useState<{ n: Note; x: number; y: number } | null>(null);
-  const [picker, setPicker] = useState<Note | null>(null);
+  const [picker, setPicker] = useState<{ n: Note; send: boolean } | null>(null);
   const [dueFor, setDueFor] = useState<Note | null>(null);
   const [finishing, setFinishing] = useState<ReadonlySet<string>>(new Set());
 
@@ -38,6 +38,7 @@ export function useItemUi({ pile, open, closeIfOpen }: { pile: Pile; open: (id: 
     if (ok) undoable(`Finished “${titleOf(n)}”`, () => void patchNote(n.id, { archived: false }));
   }, [undoable]);
 
+  const sendToTasks = useCallback(async (n: Note) => { const ok = await patchNote(n.id, { onList: true }); if (ok) undoable(`Sent “${titleOf(n)}” to your tasks`, () => void patchNote(n.id, { onList: false })); }, [undoable]);
   const bin = useCallback((n: Note) => { closeIfOpen(n.id); void patchNote(n.id, { trashed: true }).then((ok) => ok && undoable(`Moved “${titleOf(n)}” to the bin`, () => void patchNote(n.id, { trashed: false }))); }, [undoable, closeIfOpen]);
   const download = async (n: Note) => {
     const full = (await api.noteOrNull(n.id)) ?? n;
@@ -56,8 +57,10 @@ export function useItemUi({ pile, open, closeIfOpen }: { pile: Pile; open: (id: 
       n.onList
         ? { key: 'done', label: n.archived ? 'Reopen' : 'Finish', icon: n.archived ? <RotateCcw size={15} /> : <CheckCircle2 size={15} />, onSelect: () => void toggleDone(n) }
         : { key: 'arch', label: n.archived ? 'Unarchive' : 'Archive', icon: n.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />, onSelect: () => void patchNote(n.id, { archived: !n.archived }) },
-      { key: 'tags', label: n.tags.length ? 'Change tags…' : 'Send to tags…', icon: <Tags size={15} />, onSelect: () => setPicker(n) },
-      { key: 'list', label: n.onList ? 'Take off my task list' : 'Put on my task list', icon: n.onList ? <ListX size={15} /> : <ListChecks size={15} />, onSelect: () => void patchNote(n.id, { onList: !n.onList }) },
+      n.onList
+        ? { key: 'send', label: 'Send to tags…', icon: <Tags size={15} />, onSelect: () => setPicker({ n, send: true }) }
+        : { key: 'send', label: 'Send to tasks', icon: <ListChecks size={15} />, onSelect: () => void sendToTasks(n) },
+      { key: 'tags', label: n.tags.length ? 'Change tags…' : 'Add tags…', icon: <Tags size={15} />, onSelect: () => setPicker({ n, send: false }) },
       { key: 'due', label: n.dueDate ? 'Change the date…' : 'Set a date…', icon: <CalendarDays size={15} />, onSelect: () => setDueFor(n) },
       { ...link, divider: true },
       { key: 'dl', label: 'Download', icon: <Download size={15} />, onSelect: () => void download(n) },
@@ -68,15 +71,15 @@ export function useItemUi({ pile, open, closeIfOpen }: { pile: Pile; open: (id: 
   const ui: ReactNode = (
     <>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={itemsFor(menu.n)} label={`Menu for ${titleOf(menu.n)}`} onClose={() => setMenu(null)} />}
-      {picker && <TagPicker initial={picker.tags} keepOnList={picker.tags.length ? picker.onList : false} onClose={() => setPicker(null)}
-        onDone={(tags, keep) => { const n = picker; setPicker(null); void patchNote(n.id, { tags, onList: tags.length ? keep : n.onList }).then((ok) => ok && tags.length && toast(`Filed under ${tags.join(', ')}`)); }} />}
+      {picker && <TagPicker initial={picker.n.tags} send={picker.send} title={picker.send ? 'Send to tags' : 'Tags'} onClose={() => setPicker(null)}
+        onDone={(tags) => { const { n, send } = picker; setPicker(null); void patchNote(n.id, send && tags.length ? { tags, onList: false } : { tags }).then((ok) => ok && tags.length && send && toast(`Sent to ${tags.join(', ')}`)); }} />}
       {dueFor && <DueDialog n={dueFor} onClose={() => setDueFor(null)} onDone={(iso) => { const n = dueFor; setDueFor(null); void patchNote(n.id, { dueDate: iso }); }} />}
     </>
   );
 
-  const rowProps = (n: Note): Pick<ItemRowProps, 'finishing' | 'onToggleDone' | 'onMenu' | 'onSendToTags' | 'onProgress' | 'onDue' | 'hideCheck'> => ({
+  const rowProps = (n: Note): Pick<ItemRowProps, 'finishing' | 'onToggleDone' | 'onMenu' | 'onSendToTags' | 'onSendToTasks' | 'onChangeTags' | 'onProgress' | 'onDue' | 'hideCheck'> => ({
     finishing: finishing.has(n.id), hideCheck: pile === 'bin',
-    onToggleDone: () => void toggleDone(n), onMenu: (x, y) => setMenu({ n, x, y }), onSendToTags: () => setPicker(n),
+    onToggleDone: () => void toggleDone(n), onMenu: (x, y) => setMenu({ n, x, y }), onSendToTags: () => setPicker({ n, send: true }), onSendToTasks: () => void sendToTasks(n), onChangeTags: () => setPicker({ n, send: false }),
     onProgress: (v) => void patchNote(n.id, { percentDone: v }), onDue: (iso) => void patchNote(n.id, { dueDate: iso }),
   });
   return { ui, rowProps, toggleDone, finishing };
