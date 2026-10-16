@@ -31,24 +31,43 @@ class ServerPrefs(context: Context) {
         get() = p.getLong("lastUpdateCheck", 0L)
         set(v) { p.edit().putLong("lastUpdateCheck", v).apply() }
 
-    /** the widget's look: text size (1 = normal), the space between items in dp, and the order ("manual" = the same order as in the app) */
+    /** the widgets' look (shared by all of them): text size (1 = normal, down to 0.5), the space between items in dp (below 0 the items sit tighter than their normal padding), and the order ("manual" = the same order as in the app) */
     var widgetZoom: Float
         get() = p.getFloat("widgetZoom", 1f)
-        set(v) { p.edit().putFloat("widgetZoom", v.coerceIn(0.8f, 1.8f)).apply() }
+        set(v) { p.edit().putFloat("widgetZoom", v.coerceIn(0.5f, 2.0f)).apply() }
     var widgetSpacing: Int
-        get() = p.getInt("widgetSpacing", 4)
-        set(v) { p.edit().putInt("widgetSpacing", v.coerceIn(0, 20)).apply() }
+        get() = p.getInt("widgetSpacing", 2)
+        set(v) { p.edit().putInt("widgetSpacing", v.coerceIn(-10, 20)).apply() }
     var widgetSort: String
         get() = p.getString("widgetSort", "manual") ?: "manual"
         set(v) { p.edit().putString("widgetSort", v).apply() }
-    /** the item the widget has opened up a little (its description and the two big buttons are showing); blank when none */
-    var widgetOpen: String
-        get() = p.getString("widgetOpen", "") ?: ""
-        set(v) { p.edit().putString("widgetOpen", v).apply() }
-    /** the last list the server sent, so the widget draws at once (and while offline) and a refresh only has to replace it */
-    var widgetCache: String
-        get() = p.getString("widgetCache", "[]") ?: "[]"
-        set(v) { p.edit().putString("widgetCache", v).apply() }
+    /** the widget's open button shows the widget settings first (on by default); off: it opens the app straight away (the settings stay one long-press away: Reconfigure) */
+    var openShowsSettings: Boolean
+        get() = p.getBoolean("openShowsSettings", true)
+        set(v) { p.edit().putBoolean("openShowsSettings", v).apply() }
+    /** a refresh is running: the widgets show a spinner instead of the refresh arrow */
+    var refreshing: Boolean
+        get() = p.getBoolean("refreshing", false)
+        set(v) { p.edit().putBoolean("refreshing", v).apply() }
+
+    /** per list widget: which tag it shows ("" = your tasks) and the item it has opened up to fill the whole widget (blank when none) */
+    fun widgetTag(id: Int): String = p.getString("widgetTag_$id", "") ?: ""
+    fun setWidgetTag(id: Int, tag: String) { p.edit().putString("widgetTag_$id", tag).apply() }
+    fun widgetOpen(id: Int): String = p.getString("widgetOpen_$id", "") ?: ""
+    fun setWidgetOpen(id: Int, itemId: String) { p.edit().putString("widgetOpen_$id", itemId).apply() }
+    /** the last list the server sent for a tag ("" = tasks): null until it was asked once. The widget draws from it at once (and while offline); a refresh only replaces it */
+    fun cache(tag: String): String? = p.getString("widgetCache:$tag", null)
+    fun setCache(tag: String, json: String) { p.edit().putString("widgetCache:$tag", json).apply() }
+    fun cacheKeys(): List<String> = p.all.keys.filter { it.startsWith("widgetCache:") }.map { it.removePrefix("widgetCache:") }
+
+    /** per one-note widget: which note it shows, and the last copy of that note */
+    fun noteOf(id: Int): String = p.getString("noteWidget_$id", "") ?: ""
+    fun setNoteOf(id: Int, noteId: String) { p.edit().putString("noteWidget_$id", noteId).apply() }
+    fun noteCache(noteId: String): String? = p.getString("noteCache:$noteId", null)
+    fun setNoteCache(noteId: String, json: String) { p.edit().putString("noteCache:$noteId", json).apply() }
+
+    /** a widget was removed from the home screen */
+    fun forgetWidget(id: Int) { p.edit().remove("widgetTag_$id").remove("widgetOpen_$id").remove("noteWidget_$id").apply() }
 
     val configured get() = serverUrl.isNotEmpty()
     val signedIn get() = configured && token.isNotEmpty()

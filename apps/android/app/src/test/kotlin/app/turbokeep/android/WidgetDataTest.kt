@@ -49,4 +49,34 @@ class WidgetDataTest {
         assertEquals("Overdue 3 Oct" to true, WidgetData.meta(items[2], today))
         assertEquals("50%" to false, WidgetData.meta(items[3], today))
     }
+
+    @Test fun aTagWidgetListsWhatTheServerSentEvenWhenItIsNotOnTheTaskList() {
+        val json = json(note("1", "Recipe", 1.0, onList = false), note("2", "Done", 2.0, onList = false, archived = true))
+        assertEquals(emptyList<String>(), titles(WidgetData.parse(json, zone)))
+        assertEquals(listOf("Recipe"), titles(WidgetData.parse(json, zone, requireOnList = false)))
+    }
+
+    @Test fun theMetaLineEndsWithTheLastPartOfTheFirstThreeTags() {
+        val o = note("1", "a", 1.0).put("tags", JSONArray(listOf("work.reports", "urgent", "x", "y")))
+        val item = WidgetData.parse(json(o), zone)[0]
+        assertEquals("reports urgent x" to false, WidgetData.meta(item, LocalDate.of(2026, 10, 15)))
+    }
+
+    @Test fun whichListIsAskedFor() {
+        assertEquals("/api/notes?list=1&excerpt=1", WidgetData.path(""))
+        assertEquals("/api/notes?list=0&excerpt=1&tag=work.my+tag", WidgetData.path("work.my tag"))
+    }
+
+    @Test fun aNoteIsATitleThenItsLines() {
+        val n = WidgetData.parseNote(JSONObject().put("id", "a").put("title", "Shopping").put("text", "milk\r\n\n\n\neggs\nbread").toString())!!
+        assertEquals(listOf("Shopping", "milk", " ", "eggs", "bread"), WidgetData.rows(n).map { it.text })
+        assertEquals(listOf(true, false, false, false, false), WidgetData.rows(n).map { it.isTitle })
+    }
+
+    @Test fun aNoteWithoutATitleUsesItsFirstLine() {
+        val n = WidgetData.parseNote(JSONObject().put("id", "a").put("title", "").put("text", "First line\nrest").toString())!!
+        assertEquals("First line", n.title)
+        assertEquals("rest", n.text)
+        assertEquals(null, WidgetData.parseNote("not json"))
+    }
 }
