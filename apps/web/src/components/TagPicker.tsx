@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Emoji } from '../lib/emoji.tsx';
 import { Check, Tags } from 'lucide-react';
 import { useStore } from '../lib/store.ts';
 import { cn } from '../lib/cn.ts';
@@ -29,7 +30,7 @@ export function TagPicker({ title = 'Send to tags', initial, send = true, onDone
               return (
                 <button key={t.title} type="button" aria-pressed={on} onClick={() => toggle(t.title)}
                   className={cn('btn !min-h-12 justify-start gap-2 !px-3 text-left', on && 'btn-accent')} style={t.color && !on ? { boxShadow: `inset 4px 0 0 #${t.color}` } : undefined}>
-                  {on ? <Check size={16} className="shrink-0" /> : t.emoji ? <span aria-hidden className="w-4 shrink-0 text-center">{t.emoji}</span> : <span className="w-4 shrink-0" />}
+                  {on ? <Check size={16} className="shrink-0" /> : t.emoji ? <span className="grid w-4 shrink-0 place-items-center text-center"><Emoji value={t.emoji} /></span> : <span className="w-4 shrink-0" />}
                   <span className="min-w-0 flex-1 truncate">{t.title}</span>
                 </button>);
             })}

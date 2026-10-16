@@ -53,7 +53,8 @@ class NoteWidgetProvider : AppWidgetProvider() {
             // open: the note in the app; with no note chosen yet, the choice
             val openIntent = if (noteId.isEmpty()) Intent(ctx, NoteWidgetConfigActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id).setData(Uri.parse("tkwidget://choose/$id"))
                 else Intent(ctx, MainActivity::class.java).putExtra(MainActivity.EXTRA_PATH, "/home/$noteId").setData(Uri.parse("tkwidget://note/$id"))
-            v.setOnClickPendingIntent(R.id.open, TasksWidgetProvider.activity(ctx, id, 1, openIntent))
+            v.setOnClickPendingIntent(R.id.open, TasksWidgetProvider.activity(ctx, id, 1, openIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)))
+            TasksWidgetProvider.styleButtons(ctx, v, R.drawable.ic_w_open, listOf(R.id.open, R.id.refresh, R.id.refresh_spin))
             v.setOnClickPendingIntent(R.id.refresh, TasksWidgetProvider.refreshIntent(ctx, id, NoteWidgetProvider::class.java))
             v.setViewVisibility(R.id.refresh, if (prefs.refreshing) View.GONE else View.VISIBLE)
             v.setViewVisibility(R.id.refresh_spin, if (prefs.refreshing) View.VISIBLE else View.GONE)

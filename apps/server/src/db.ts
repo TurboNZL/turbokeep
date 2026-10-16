@@ -38,7 +38,8 @@ create table if not exists notes (
   percent_done real not null default 0,
   position real not null default 0,
   created_at text not null,
-  updated_at text not null
+  updated_at text not null,
+  auto_title integer not null default 0 -- the title was made by the app (the date), not typed: shown only in the editor
 );
 create index if not exists notes_user on notes(user_id, updated_at);
 create table if not exists tags (
@@ -55,6 +56,15 @@ create table if not exists note_tags (
   tag_id text not null references tags(id) on delete cascade,
   position integer not null default 0, -- the order the tags have on their note (drag to change)
   primary key (note_id, tag_id)
+);
+-- emoji you imported: already resized to emoji size by the page; a tag uses one as ':<id>:' in its emoji field
+create table if not exists custom_emoji (
+  id text primary key,
+  user_id integer not null references users(id) on delete cascade,
+  name text not null default '',
+  mime text not null,
+  data blob not null,
+  created_at text not null
 );
 `;
 
@@ -125,6 +135,9 @@ export const MIGRATIONS: Migration[] = [
   },
   // 4 -> 5: the tags of a note have an order of their own
   'alter table note_tags add column position integer not null default 0',
+  // 5 -> 6: a title the app made (the date) is remembered as such; imported emoji
+  `alter table notes add column auto_title integer not null default 0;
+   create table if not exists custom_emoji (id text primary key, user_id integer not null references users(id) on delete cascade, name text not null default '', mime text not null, data blob not null, created_at text not null)`,
 ];
 export const SCHEMA_VERSION = 1 + MIGRATIONS.length;
 
@@ -133,7 +146,7 @@ function migrate(db: DatabaseSync) {
   // a database made before versions existed has its tables already: the shape of `tasks` says which version it is (a new one has no tables)
   if (have === 0 && db.prepare("select 1 x from sqlite_master where type = 'table' and name = 'tasks'").get())
     have = (db.prepare("select 1 x from pragma_table_info('tasks') where name = 'note_id'").get() ? (db.prepare("select 1 x from pragma_table_info('tags') where name = 'emoji'").get() ? 3 : 2) : 1);
-  else if (have === 0 && db.prepare("select 1 x from pragma_table_info('notes') where name = 'on_list'").get()) have = db.prepare("select 1 x from pragma_table_info('note_tags') where name = 'position'").get() ? SCHEMA_VERSION : 4;
+  else if (have === 0 && db.prepare("select 1 x from pragma_table_info('notes') where name = 'on_list'").get()) have = db.prepare("select 1 x from pragma_table_info('notes') where name = 'auto_title'").get() ? SCHEMA_VERSION : db.prepare("select 1 x from pragma_table_info('note_tags') where name = 'position'").get() ? 5 : 4;
   if (have > SCHEMA_VERSION) throw new Error(`This database is from a newer TurboKeep (schema ${have}, this server knows ${SCHEMA_VERSION}). Update the server, or restore a backup.`);
   if (have === SCHEMA_VERSION) { db.exec(`pragma user_version = ${SCHEMA_VERSION}`); return; }
   db.exec('begin immediate');

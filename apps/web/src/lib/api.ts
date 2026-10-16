@@ -20,8 +20,10 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 export interface Note {
   id: string; title: string; text: string; noteType: string; pinned: boolean; archived: boolean; trashed: boolean;
   onList: boolean; dueDate: string | null; percentDone: number; position: number; tags: string[]; createdAt: string; updatedAt: string;
+  /** the title is the date the app put there: shown only in the editor, lists show the text instead */
+  autoTitle: boolean;
 }
-export type NotePatch = Partial<Pick<Note, 'title' | 'text' | 'noteType' | 'pinned' | 'archived' | 'trashed' | 'onList' | 'dueDate' | 'percentDone' | 'tags'>> & { base?: string };
+export type NotePatch = Partial<Pick<Note, 'title' | 'text' | 'noteType' | 'pinned' | 'archived' | 'trashed' | 'onList' | 'dueDate' | 'percentDone' | 'tags' | 'autoTitle'>> & { base?: string };
 export interface TagCounts { title: string; emoji: string; color: string; notes: number; tasks: number; archived: number; trashed: number }
 export interface TagInfo { title: string; emoji: string; color: string; count: number }
 export interface NoteParams { excerpt?: string; view?: string; list?: string; tag?: string; untagged?: string; q?: string; due?: string }
@@ -51,7 +53,10 @@ export const api = {
   moveNote: (id: string, above: string | null, below: string | null) => req<Note>('POST', `/api/notes/${id}/move`, { above, below }),
   deleteNote: (id: string) => req<unknown>('DELETE', `/api/notes/${id}`),
   emptyTrash: () => req<{ deleted: number }>('POST', '/api/notes/empty-trash'),
-  tags: (pile: 'live' | 'archived' = 'live') => req<TagInfo[]>('GET', pile === 'archived' ? '/api/tags?view=archived' : '/api/tags'),
+  tags: (pile: 'live' | 'archived' = 'live', withTasks = false) => req<TagInfo[]>('GET', `/api/tags?${pile === 'archived' ? 'view=archived&' : ''}${withTasks ? 'tasks=1' : ''}`.replace(/[?&]$/, '')),
+  emoji: () => req<{ id: string; name: string }[]>('GET', '/api/emoji'),
+  addEmoji: (name: string, data: string) => req<{ id: string; name: string }>('POST', '/api/emoji', { name, data }),
+  deleteEmoji: (id: string) => req<unknown>('DELETE', `/api/emoji/${id}`),
   styleTag: (title: string, look: { emoji?: string; color?: string }) => req<unknown>('PATCH', '/api/tags', { title, ...look }),
   renameTag: (from: string, to: string) => req<unknown>('PATCH', '/api/tags', { from, to }),
   deleteTag: (title: string, tree = false) => req<unknown>('DELETE', `/api/tags?title=${encodeURIComponent(title)}${tree ? '&tree=1' : ''}`),

@@ -39,13 +39,11 @@ export function SearchBox({ query, onSearch, where }: { query: string; onSearch:
     const out: Suggestion[] = [];
     if (!typed) {
       const t = text.trim().toLowerCase();
-      if (!t || '-'.startsWith(t) || FILTERS.some((f) => f.key.startsWith(t.replace(/^-/, '')))) {
-        const neg = t.startsWith('-');
-        for (const f of FILTERS) {
-          if (neg && !f.negatable) continue;
-          if (t.replace(/^-/, '') && !f.key.startsWith(t.replace(/^-/, ''))) continue;
-          out.push({ id: f.key, label: `${neg ? '-' : ''}${f.key}:`, hint: f.hint, run: () => { setText(`${neg ? '-' : ''}${f.key}:`); input.current?.focus(); } });
-        }
+      const neg = t.startsWith('-'), bare = t.replace(/^-/, '');
+      for (const f of FILTERS) {
+        if (neg && !f.negatable) continue;
+        if (bare && !f.name.startsWith(bare)) continue;
+        out.push({ id: f.name, label: `${neg ? '-' : ''}${f.name}:`, hint: f.hint, run: () => { setText(`${neg ? '-' : ''}${f.name}:`); input.current?.focus(); } });
       }
       return out;
     }
@@ -92,7 +90,7 @@ export function SearchBox({ query, onSearch, where }: { query: string; onSearch:
             <span className="text-muted">{c.neg ? 'not ' : ''}{c.key}:</span>{c.value}
             <button type="button" aria-label={`Remove filter ${chipText(c)}`} className="text-muted hover:text-fg" onClick={(e) => { e.stopPropagation(); apply(chips.filter((_, j) => j !== i), text); }}><X size={12} /></button>
           </span>))}
-        <input ref={input} className="min-w-[6rem] flex-1 bg-transparent py-0.5 text-sm outline-none placeholder:text-muted" type="search" aria-label={`Search ${where}`} placeholder={chips.length ? 'Add a filter…' : `Search ${where}, or filter: tag, before…`}
+        <input ref={input} className="min-w-[6rem] flex-1 bg-transparent py-0.5 text-sm outline-none placeholder:text-muted" type="text" enterKeyHint="search" autoComplete="off" aria-label={`Search ${where}`} placeholder={chips.length ? 'Add a filter…' : `Search ${where}, or filter: tag, before…`}
           value={text} onChange={(e) => { setText(e.target.value); setHi(0); walked.current = false; }} onFocus={() => setFocus(true)} onBlur={() => setTimeout(() => setFocus(false), 120)} onKeyDown={onKey} />
         {(chips.length > 0 || text) && <button type="button" aria-label="Clear the search" className="shrink-0 text-xs text-muted hover:text-fg" onClick={(e) => { e.stopPropagation(); setText(''); onSearch(''); }}><X size={14} /></button>}
       </div>

@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -38,25 +39,75 @@ class TasksWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action != ACTION_REFRESH) return
-        // the button always does something and always says what happened, even when the list is empty or the server cannot be reached
-        val pending = goAsync()
-        WidgetRefresh.start(context, announce = true) { pending.finish() }
+        when (intent.action) {
+            // the button always does something and always says what happened, even when the list is empty or the server cannot be reached
+            ACTION_REFRESH -> { val pending = goAsync(); WidgetRefresh.start(context, announce = true) { pending.finish() } }
+            // a tap inside the widget is a broadcast, not an activity: an activity of this app would bring the app forward when it sits in Recents
+            ACTION_OP -> {
+                val pending = goAsync()
+                val id = intent.getStringExtra(EXTRA_ID) ?: run { pending.finish(); return }
+                val widget = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+                val op = intent.getStringExtra(EXTRA_OP) ?: ""
+                Thread { try { handleOp(context.applicationContext, widget, id, op) } finally { pending.finish() } }.start()
+            }
+        }
     }
 
     companion object {
         const val ACTION_REFRESH = "app.turbokeep.android.REFRESH"
+        const val ACTION_OP = "app.turbokeep.android.OP"
+        const val EXTRA_OP = "op"
+        const val EXTRA_ID = "id"
         private const val IMMUTABLE = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
 
         // a different request code for every widget and button, so each one keeps its own extras
         fun code(id: Int, button: Int) = id * 16 + button
         fun activity(ctx: Context, id: Int, button: Int, i: Intent): PendingIntent = PendingIntent.getActivity(ctx, code(id, button), i, IMMUTABLE)
+        /** a button inside the widget: a broadcast to the widget's own receiver (never an activity) */
+        fun opIntent(ctx: Context, widget: Int, button: Int, op: String, itemId: String): PendingIntent =
+            PendingIntent.getBroadcast(ctx, code(widget, button), Intent(ctx, TasksWidgetProvider::class.java).setAction(ACTION_OP).setData(Uri.parse("tkwidget://op/$widget/$op"))
+                .putExtra(EXTRA_OP, op).putExtra(EXTRA_ID, itemId).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widget), IMMUTABLE)
+
+        /** what a tap does: `open`/`collapse` change what the widget shows; `done` archives the item, `tasks` sends a tag's note to your tasks, `tagged` sends a task that has tags to them */
+        fun handleOp(ctx: Context, widget: Int, id: String, op: String) {
+            val prefs = ServerPrefs(ctx)
+            when (op) {
+                "open" -> { prefs.setWidgetOpen(widget, id); redraw(ctx) }
+                "collapse" -> { prefs.setWidgetOpen(widget, ""); redraw(ctx) }
+                "done" -> leave(ctx, widget, id, "{\"archived\":true}")
+                "tasks" -> leave(ctx, widget, id, "{\"onList\":true}")
+                "tagged" -> leave(ctx, widget, id, "{\"onList\":false}")
+            }
+        }
+
+        /** the item leaves this list at once; the server is told, then asked for the real list */
+        private fun leave(ctx: Context, widget: Int, id: String, patch: String) {
+            WidgetData.forget(ctx, id)
+            ServerPrefs(ctx).setWidgetOpen(widget, "")
+            redraw(ctx)
+            runCatching { KeepApi.call(ctx, "PATCH", "/api/notes/$id", patch) }
+            WidgetRefresh.start(ctx, announce = false)
+        }
+
         fun refreshIntent(ctx: Context, id: Int, provider: Class<*>): PendingIntent =
             PendingIntent.getBroadcast(ctx, code(id, 4), Intent(ctx, provider).setAction(ACTION_REFRESH), IMMUTABLE)
 
         /** the intent that opens the widget's settings (as a small window) for one widget */
         fun settingsIntent(ctx: Context, id: Int): Intent =
-            Intent(ctx, WidgetSettingsActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id).setData(Uri.parse("tkwidget://settings/$id"))
+            Intent(ctx, WidgetSettingsActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id).setData(Uri.parse("tkwidget://settings/$id")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        /** the round buttons' size (Android 12 and later can resize a view of a widget) and the icon of the top one: settings while it opens the settings, the open arrow while it opens the app */
+        fun styleButtons(ctx: Context, v: RemoteViews, openIcon: Int?, ids: List<Int>) {
+            val prefs = ServerPrefs(ctx)
+            if (openIcon != null) {
+                v.setImageViewResource(R.id.open, openIcon)
+                v.setContentDescription(R.id.open, if (openIcon == R.drawable.ic_w_settings) "Widget settings" else "Open TurboKeep")
+            }
+            if (Build.VERSION.SDK_INT >= 31) for (i in ids) {
+                v.setViewLayoutWidth(i, prefs.widgetButton.toFloat(), TypedValue.COMPLEX_UNIT_DIP)
+                v.setViewLayoutHeight(i, prefs.widgetButton.toFloat(), TypedValue.COMPLEX_UNIT_DIP)
+            }
+        }
 
         fun toast(ctx: Context, text: String) = Handler(Looper.getMainLooper()).post { Toast.makeText(ctx.applicationContext, text, Toast.LENGTH_SHORT).show() }
 
@@ -81,7 +132,9 @@ class TasksWidgetProvider : AppWidgetProvider() {
             if (item != null) {
                 v.setViewVisibility(R.id.list_area, View.GONE)
                 v.setViewVisibility(R.id.detail_area, View.VISIBLE)
-                val (meta, _) = WidgetData.meta(item)
+                val (meta, _) = WidgetData.meta(item, showTags = prefs.widgetShowTags)
+                // an item with no title of its own shows only its text
+                v.setViewVisibility(R.id.detail_title, if (item.hasTitle) View.VISIBLE else View.GONE)
                 v.setTextViewText(R.id.detail_title, item.title)
                 v.setTextViewTextSize(R.id.detail_title, TypedValue.COMPLEX_UNIT_SP, 17f * zoom)
                 v.setTextViewText(R.id.detail_meta, meta)
@@ -92,11 +145,14 @@ class TasksWidgetProvider : AppWidgetProvider() {
                 v.setInt(R.id.detail_desc, "setMaxLines", linesFor(ctx, manager, id, zoom))
                 v.setTextViewText(R.id.detail_done, if (tag.isEmpty()) "Complete" else "Archive")
                 v.setTextViewText(R.id.detail_send, if (tag.isEmpty()) "Send to tags" else "Send to tasks")
-                fun op(name: String) = Intent(ctx, WidgetActionActivity::class.java).setData(Uri.parse("tkwidget://action/$id/$name"))
-                    .putExtra(WidgetActionActivity.EXTRA_OP, name).putExtra(WidgetActionActivity.EXTRA_ID, item.id).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-                v.setOnClickPendingIntent(R.id.detail_text, activity(ctx, id, 6, op("collapse")))
-                v.setOnClickPendingIntent(R.id.detail_done, activity(ctx, id, 7, op("done")))
-                v.setOnClickPendingIntent(R.id.detail_send, activity(ctx, id, 8, op(if (tag.isEmpty()) "tags" else "tasks")))
+                v.setOnClickPendingIntent(R.id.detail_text, opIntent(ctx, id, 6, "collapse", item.id))
+                v.setOnClickPendingIntent(R.id.detail_done, opIntent(ctx, id, 7, "done", item.id))
+                v.setOnClickPendingIntent(R.id.detail_send, when {
+                    tag.isNotEmpty() -> opIntent(ctx, id, 8, "tasks", item.id)
+                    item.tags.isNotEmpty() -> opIntent(ctx, id, 8, "tagged", item.id) // it has tags already: straight to them, no window
+                    else -> activity(ctx, id, 8, Intent(ctx, WidgetActionActivity::class.java).setData(Uri.parse("tkwidget://action/$id/tags")) // none yet: the app asks which
+                        .putExtra(WidgetActionActivity.EXTRA_OP, "tags").putExtra(WidgetActionActivity.EXTRA_ID, item.id).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                })
                 manager.updateAppWidget(id, v)
                 return
             }
@@ -115,14 +171,15 @@ class TasksWidgetProvider : AppWidgetProvider() {
             v.setTextViewTextSize(R.id.empty, TypedValue.COMPLEX_UNIT_SP, 14f * zoom.coerceAtLeast(0.8f))
 
             // open: the widget's settings first (they have an Open TurboKeep button), or straight into the app when that is turned off there
-            val openIntent = if (prefs.openShowsSettings) settingsIntent(ctx, id) else Intent(ctx, MainActivity::class.java).setData(Uri.parse("tkwidget://open/$id"))
+            val openIntent = if (prefs.openShowsSettings) settingsIntent(ctx, id) else Intent(ctx, MainActivity::class.java).setData(Uri.parse("tkwidget://open/$id")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             v.setOnClickPendingIntent(R.id.open, activity(ctx, id, 1, openIntent))
+            styleButtons(ctx, v, if (prefs.openShowsSettings) R.drawable.ic_w_settings else R.drawable.ic_w_open, listOf(R.id.open, R.id.refresh, R.id.refresh_spin))
             v.setOnClickPendingIntent(R.id.refresh, refreshIntent(ctx, id, TasksWidgetProvider::class.java))
             v.setViewVisibility(R.id.refresh, if (prefs.refreshing) View.GONE else View.VISIBLE)
             v.setViewVisibility(R.id.refresh_spin, if (prefs.refreshing) View.VISIBLE else View.GONE)
             // one template for every row; each row adds what it is (open it up) and which item
-            val template = Intent(ctx, WidgetActionActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-            v.setPendingIntentTemplate(R.id.list, PendingIntent.getActivity(ctx, code(id, 5), template, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE))
+            val template = Intent(ctx, TasksWidgetProvider::class.java).setAction(ACTION_OP).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+            v.setPendingIntentTemplate(R.id.list, PendingIntent.getBroadcast(ctx, code(id, 5), template, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE))
             manager.updateAppWidget(id, v)
         }
 
@@ -203,7 +260,7 @@ class TasksWidgetService : RemoteViewsService() {
             val zoom = prefs.widgetZoom
             val density = ctx.resources.displayMetrics.density
             val v = RemoteViews(ctx.packageName, R.layout.widget_item)
-            val (meta, overdue) = WidgetData.meta(r)
+            val (meta, overdue) = WidgetData.meta(r, showTags = prefs.widgetShowTags)
 
             v.setTextViewText(R.id.item_title, r.title)
             v.setTextViewTextSize(R.id.item_title, TypedValue.COMPLEX_UNIT_SP, 14f * zoom)
@@ -220,7 +277,7 @@ class TasksWidgetService : RemoteViewsService() {
             v.setViewPadding(R.id.card, (10 * density).toInt(), (inner * density).toInt(), (10 * density).toInt(), (inner * density).toInt())
 
             // a tap opens the item up over the whole widget
-            v.setOnClickFillInIntent(R.id.card, Intent().putExtra(WidgetActionActivity.EXTRA_OP, "open").putExtra(WidgetActionActivity.EXTRA_ID, r.id))
+            v.setOnClickFillInIntent(R.id.card, Intent().putExtra(TasksWidgetProvider.EXTRA_OP, "open").putExtra(TasksWidgetProvider.EXTRA_ID, r.id))
             return v
         }
     }

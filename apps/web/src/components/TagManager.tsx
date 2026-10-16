@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Emoji } from '../lib/emoji.tsx';
 import { Pencil, Trash2 } from 'lucide-react';
 import { api, type TagCounts } from '../lib/api.ts';
 import { useStore } from '../lib/store.ts';
@@ -45,7 +46,7 @@ export function TagManager() {
                 <tr key={t.title} className="border-t border-line/60">
                   <td className="px-2 py-1.5" style={t.color ? { boxShadow: `inset 4px 0 0 #${t.color}` } : undefined}>
                     <span className="flex items-center gap-2" style={{ paddingLeft: `${(t.title.split('.').length - 1) * 1 + 0.4}rem` }}>
-                      {t.emoji && <span aria-hidden>{t.emoji}</span>}<span className="min-w-0 truncate" title={t.title}>{t.title.split('.').pop()}</span>
+                      {t.emoji && <Emoji value={t.emoji} />}<span className="min-w-0 truncate" title={t.title}>{t.title.split('.').pop()}</span>
                       {t.implied && <span className="text-xs text-muted">(parent)</span>}
                     </span>
                   </td>

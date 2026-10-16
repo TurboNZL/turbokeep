@@ -219,9 +219,10 @@ export function AppearancePreview() {
   );
 }
 
-const SIZES: { key: 'railWidth' | 'listWidth' | 'cardWidth'; label: string; hint: string }[] = [
+const SIZES: { key: 'railWidth' | 'listWidth' | 'cardWidth' | 'paneWidth'; label: string; hint: string }[] = [
   { key: 'railWidth', label: 'Tags column', hint: 'Tasks, All notes, Due soon and your tags, on the left of Home and the Archive.' },
   { key: 'listWidth', label: 'List of items', hint: 'The column of items next to the open note (the most it grows to).' },
+  { key: 'paneWidth', label: 'Editor panel (Keep wall + panel)', hint: 'The width of the editor beside the cards. You can also drag the divider between them.' },
   { key: 'cardWidth', label: 'Keep card', hint: 'How wide a card of the Google Keep wall is at least: narrower cards fit more columns.' },
 ];
 
@@ -229,6 +230,7 @@ const SIZES: { key: 'railWidth' | 'listWidth' | 'cardWidth'; label: string; hint
 export function DivisionSizeSection() {
   const { settings, updateSettings } = useStore();
   const changed = SIZES.some((x) => settings[x.key] !== DEFAULT_SETTINGS[x.key]);
+  const sizes: { id: DeviceSettings['buttonSize']; label: string }[] = [{ id: 'small', label: 'Small' }, { id: 'medium', label: 'Medium' }, { id: 'large', label: 'Large' }];
   return (
     <Section title="Size of the divisions">
       <p className="text-sm text-muted">Make the columns of Home and the Archive wider or narrower to suit you. The open note takes the rest. Saved on this device.</p>
@@ -240,7 +242,14 @@ export function DivisionSizeSection() {
               onChange={(e) => updateSettings({ [key]: Number(e.target.value) } as Partial<DeviceSettings>)} aria-label={`${label} width`} />
             <span className="text-xs text-muted">{hint}</span></label>);
       })}
-      <button type="button" className="btn text-xs" disabled={!changed} onClick={() => updateSettings({ railWidth: DEFAULT_SETTINGS.railWidth, listWidth: DEFAULT_SETTINGS.listWidth, cardWidth: DEFAULT_SETTINGS.cardWidth })}>Back to the usual sizes</button>
+      <div className="space-y-1 text-sm"><span className="font-medium">Button size</span> <span className="text-xs text-muted">the check box and the pencil on every item</span>
+        <div role="radiogroup" aria-label="Button size" className="flex w-fit rounded-theme bg-raised p-0.5">
+          {sizes.map((b) => <button key={b.id} type="button" role="radio" aria-checked={settings.buttonSize === b.id} onClick={() => updateSettings({ buttonSize: b.id })}
+            className={cn('rounded-[calc(var(--radius)-3px)] px-3 py-1 text-xs font-medium', settings.buttonSize === b.id ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg')}>{b.label}</button>)}
+        </div></div>
+      <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={settings.fullWhenIdle} onChange={(e) => updateSettings({ fullWhenIdle: e.target.checked })} /><span>Use the whole width for the list while nothing is open (the list view; the panel on the right comes back when you open an item).</span></label>
+      <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={settings.dividerWhenForeign} onChange={(e) => updateSettings({ dividerWhenForeign: e.target.checked })} /><span>Show the divider between the list and the open item when that item is not under the tag the list is showing. (The divider can always be dragged to change the widths.)</span></label>
+      <button type="button" className="btn text-xs" disabled={!changed} onClick={() => updateSettings({ railWidth: DEFAULT_SETTINGS.railWidth, listWidth: DEFAULT_SETTINGS.listWidth, cardWidth: DEFAULT_SETTINGS.cardWidth, paneWidth: DEFAULT_SETTINGS.paneWidth })}>Back to the usual sizes</button>
     </Section>
   );
 }

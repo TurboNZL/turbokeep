@@ -11,6 +11,7 @@
     android:resizeMode="horizontal|vertical"
     android:targetCellWidth="2"
     android:targetCellHeight="2"
+    android:previewLayout="@layout/widget_preview_note"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen"
     tools:targetApi="s"

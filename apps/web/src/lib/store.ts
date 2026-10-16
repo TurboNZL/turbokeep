@@ -3,6 +3,8 @@ import { api, ApiError, type Note, type TagInfo } from './api.ts';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type DeviceSettings } from './settings.ts';
 import { takeMeta } from './prefetch.ts';
 import { applyAppearance } from './appearance.ts';
+import { tasksInTags } from './views.ts';
+import { ownCache, recall, remember, setCacheLevel } from './cache.ts';
 
 export interface Toast { id: number; message: string; tone?: 'bad'; action?: { label: string; run: () => void } }
 
@@ -37,19 +39,21 @@ function readOpenNote(): string | null { try { return localStorage.getItem('turb
 let toastId = 0;
 
 export const useStore = create<State>((set, get) => ({
-  settings: loadSettings(),
+  settings: (() => { const s = loadSettings(); setCacheLevel(s.cacheLevel); return s; })(),
   updateSettings(patch) {
     const settings = { ...get().settings, ...patch };
     saveSettings(settings);
+    if (patch.cacheLevel) setCacheLevel(settings.cacheLevel);
     set({ settings });
     applyAppearance(settings);
   },
   user: null, auth: 'loading',
-  setUser: (user) => set({ user, auth: user ? 'in' : 'out' }),
-  tags: [],
+  setUser: (user) => { ownCache(user?.id ?? null); set({ user, auth: user ? 'in' : 'out' }); },
+  tags: recall<TagInfo[]>('tags') ?? [],
   async refreshMeta() {
     // the prefetched answer was asked before signing in when this is a fresh sign-in: a refusal there is stale, so ask again
-    try { set({ tags: await (takeMeta() ?? api.tags()).catch(() => api.tags()) }); } catch (e) { if (e instanceof ApiError && e.status === 401) get().setUser(null); }
+    const withTasks = tasksInTags(get().settings.countTasks, false);
+    try { const tags = await ((withTasks ? null : takeMeta()) ?? api.tags('live', withTasks)).catch(() => api.tags('live', withTasks)); remember('tags', tags); set({ tags }); } catch (e) { if (e instanceof ApiError && e.status === 401) get().setUser(null); }
   },
   notes: [],
   setNotes: (notes) => set({ notes }),

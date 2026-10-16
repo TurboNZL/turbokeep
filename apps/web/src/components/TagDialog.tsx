@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Emoji } from '../lib/emoji.tsx';
 import { api, type TagInfo } from '../lib/api.ts';
 import { Dialog } from './Dialog.tsx';
 import { EmojiPicker } from './EmojiPicker.tsx';
@@ -26,7 +27,7 @@ export function TagDialog({ tag, onClose, onDone, implied }: { tag: TagInfo; onC
     <Dialog title={`Tag: ${tag.title}`} onClose={onClose}>
       <form onSubmit={save} className="space-y-4">
         <div className="flex items-center gap-3">
-          <button type="button" className="btn !h-14 !w-14 shrink-0 !p-0 text-3xl" aria-expanded={picking} aria-label={emoji ? `Emoji ${emoji}: change` : 'Choose an emoji'} onClick={() => setPicking((p) => !p)}>{emoji || '🙂'}</button>
+          <button type="button" className="btn !h-14 !w-14 shrink-0 !p-0 text-3xl" aria-expanded={picking} aria-label={emoji ? 'Change the emoji' : 'Choose an emoji'} onClick={() => setPicking((p) => !p)}>{emoji ? <Emoji value={emoji} className="!h-10 !w-10" /> : '🙂'}</button>
           <label className="block min-w-0 flex-1 space-y-1 text-sm">Name<input className="input" value={name} onChange={(e) => setName(e.target.value)} required autoFocus /></label>
         </div>
         <p className="-mt-2 text-xs text-muted">A dot makes a sub-tag: <code>work.reports</code> sits under <code>work</code>. Renaming a tag renames the tags under it too.</p>

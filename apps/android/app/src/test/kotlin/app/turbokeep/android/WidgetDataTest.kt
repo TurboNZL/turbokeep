@@ -21,10 +21,11 @@ class WidgetDataTest {
         assertEquals(listOf("Milk"), titles(items))
     }
 
-    @Test fun anUntitledItemUsesItsFirstLineAndTheRestIsTheDescription() {
+    @Test fun anItemWithoutATitleOfItsOwnIsItsText() {
         val items = WidgetData.parse(json(note("1", "", 1.0, text = "Call the bank\nabout the card")), zone)
-        assertEquals("Call the bank", items[0].title)
-        assertEquals("about the card", items[0].text)
+        assertEquals("Call the bank\nabout the card", items[0].title) // no title of its own: its text is what it is called
+        assertEquals("Call the bank\nabout the card", items[0].text)
+        assertEquals(false, items[0].hasTitle)
     }
 
     @Test fun myOrderKeepsThePositionsAndPutsPinnedFirst() {
@@ -59,7 +60,8 @@ class WidgetDataTest {
     @Test fun theMetaLineEndsWithTheLastPartOfTheFirstThreeTags() {
         val o = note("1", "a", 1.0).put("tags", JSONArray(listOf("work.reports", "urgent", "x", "y")))
         val item = WidgetData.parse(json(o), zone)[0]
-        assertEquals("reports urgent x" to false, WidgetData.meta(item, LocalDate.of(2026, 10, 15)))
+        assertEquals("reports urgent x" to false, WidgetData.meta(item, LocalDate.of(2026, 10, 15), showTags = true))
+        assertEquals("" to false, WidgetData.meta(item, LocalDate.of(2026, 10, 15))) // tags are off unless the widget says so
     }
 
     @Test fun whichListIsAskedFor() {
@@ -78,5 +80,13 @@ class WidgetDataTest {
         assertEquals("First line", n.title)
         assertEquals("rest", n.text)
         assertEquals(null, WidgetData.parseNote("not json"))
+    }
+
+    @Test fun aTitleTheAppMadeIsNotATitle() {
+        val o = note("1", "Friday, 16 Oct 2026 at 09:05", 1.0, text = "the long text").put("autoTitle", true)
+        val item = WidgetData.parse(json(o), zone)[0]
+        assertEquals("the long text", item.title)
+        assertEquals(false, item.hasTitle)
+        assertEquals(true, WidgetData.parse(json(note("2", "Mine", 1.0, text = "x")), zone)[0].hasTitle)
     }
 }

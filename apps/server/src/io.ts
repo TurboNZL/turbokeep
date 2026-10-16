@@ -1,6 +1,6 @@
 import { type DB, all, get, run, tx, now } from './db.ts';
 import { VERSION } from './version.ts';
-import { HttpError, createNote } from './store.ts';
+import { HttpError, addEmoji, createNote, exportEmoji } from './store.ts';
 import { buildStandardNotesZip, parseStandardNotes, type SnTag } from './formats/standardnotes.ts';
 import { buildTurboKeepZip, parseTurboKeep, type TkBundle, type TkNote } from './formats/turbokeep.ts';
 import { buildVikunjaZip, parseVikunja, type VTask } from './formats/vikunja.ts';
@@ -121,11 +121,12 @@ export function exportTurboKeep(db: DB, userId: number): Uint8Array {
   for (const r of tagRows) (tags.get(r.note_id) ?? tags.set(r.note_id, []).get(r.note_id)!).push(r.title);
   const notes: TkNote[] = all(db, 'select * from notes where user_id = ? order by created_at, id', userId).map((n) => ({
     id: n.id, title: n.title, text: n.text, noteType: n.note_type, pinned: !!n.pinned, archived: !!n.archived, trashed: !!n.trashed, tags: tags.get(n.id) ?? [], createdAt: n.created_at, updatedAt: n.updated_at,
-    onList: !!n.on_list, dueDate: n.due_date, percentDone: n.percent_done, position: n.position,
+    onList: !!n.on_list, dueDate: n.due_date, percentDone: n.percent_done, position: n.position, autoTitle: !!n.auto_title,
   }));
   const bundle: TkBundle = {
     notes,
     tagStyles: all(db, "select title, emoji, color from tags where user_id = ? and (emoji != '' or color != '') order by title", userId).map((t) => ({ title: t.title, emoji: t.emoji, color: t.color })),
+    customEmoji: exportEmoji(db, userId),
   };
   return buildTurboKeepZip(bundle, VERSION);
 }
@@ -136,6 +137,12 @@ export function importTurboKeep(db: DB, user: { id: number; username: string }, 
   try {
     tx(db, () => {
       const tagsBefore = Number(get(db, 'select count(*) c from tags where user_id = ?', user.id)!.c);
+      // imported emoji first (a tag's look may use one); an id another account already has gets a new one
+      const remap = new Map<string, string>();
+      for (const e of bundle.customEmoji ?? []) {
+        if (get(db, 'select 1 x from custom_emoji where id = ? and user_id = ?', e.id, user.id)) continue;
+        try { const row = addEmoji(db, user.id, e.name, new Uint8Array(Buffer.from(e.data, 'base64')), get(db, 'select 1 x from custom_emoji where id = ?', e.id) ? undefined : e.id); if (row.id !== e.id) remap.set(`:${e.id}:`, `:${row.id}:`); } catch { /* a damaged picture is skipped */ }
+      }
       for (const n of bundle.notes) {
         let id = n.id;
         const existing = get(db, 'select user_id from notes where id = ?', id);
@@ -145,7 +152,7 @@ export function importTurboKeep(db: DB, user: { id: number; username: string }, 
         (report.notes as number)++;
       }
       // tag looks: only fill in a tag that has none yet, so importing never overwrites what you chose here
-      for (const t of bundle.tagStyles) run(db, "update tags set emoji = case when emoji = '' then ? else emoji end, color = case when color = '' then ? else color end where user_id = ? and title = ?", t.emoji, t.color, user.id, t.title);
+      for (const t of bundle.tagStyles) run(db, "update tags set emoji = case when emoji = '' then ? else emoji end, color = case when color = '' then ? else color end where user_id = ? and title = ?", remap.get(t.emoji) ?? t.emoji, t.color, user.id, t.title);
       report.tags = Number(get(db, 'select count(*) c from tags where user_id = ?', user.id)!.c) - tagsBefore;
       if (dry) throw new DryRun();
     });

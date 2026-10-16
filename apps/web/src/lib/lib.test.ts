@@ -41,11 +41,13 @@ import { canReorder, compareManual, dueSoon, filterFromSearch, homeLink, matches
 import { cleanNavOrder, DEFAULT_SETTINGS, loadSettings } from './settings.ts';
 import { linkedNotes } from './clip.ts';
 import { buildQuery, parseQuery, typedFilter } from './searchQuery.ts';
+import { tasksInTags } from './views.ts';
+import { isCustomEmoji } from './emoji.tsx';
 import { railTags } from './tagTree.ts';
 import { TITLE_MAX, titleOverflow } from './title.ts';
 import { looksOf, stripe } from './tagLook.ts';
 import type { Note } from './api.ts';
-const note = (title: string, o: Partial<Note> = {}): Note => ({ id: title, title, text: '', noteType: 'plain-text', pinned: false, archived: false, trashed: false, onList: true, dueDate: null, percentDone: 0, position: 0, tags: [], createdAt: '2026-01-01', updatedAt: '2026-01-01', ...o });
+const note = (title: string, o: Partial<Note> = {}): Note => ({ id: title, title, text: '', noteType: 'plain-text', pinned: false, archived: false, trashed: false, onList: true, dueDate: null, percentDone: 0, position: 0, tags: [], createdAt: '2026-01-01', updatedAt: '2026-01-01', autoTitle: false, ...o });
 
 describe('the filter, the address and what belongs in a list', () => {
   it('reads the filter from the address and asks the server for excerpts', () => {
@@ -215,5 +217,28 @@ describe('a title too long to be a title', () => {
     expect(o.text).toBe(`${'y'.repeat(TITLE_MAX + 1)}\n\nold text`);
     expect(o.caret).toBe(TITLE_MAX + 1);
     expect(titleOverflow('z'.repeat(200), '')!.text).toBe('z'.repeat(200));
+  });
+});
+
+describe('tasks in tags, search words, imported emoji', () => {
+  it('a setting says where tasks that carry a tag also count', () => {
+    expect([false, true].map((a) => tasksInTags('never', a))).toEqual([false, false]);
+    expect([false, true].map((a) => tasksInTags('home', a))).toEqual([true, false]);
+    expect([false, true].map((a) => tasksInTags('archive', a))).toEqual([false, true]);
+    expect([false, true].map((a) => tasksInTags('both', a))).toEqual([true, true]);
+    expect(viewParams({ scope: 'list', tag: 'work' }, false, true)).toEqual({ excerpt: '1', tag: 'work' });
+    const tagged = note('x', { tags: ['work'] });
+    expect(matchesFilter(tagged, { scope: 'list', tag: 'work' }, false, true)).toBe(true);
+    expect(matchesFilter(tagged, { scope: 'list', tag: 'work' }, false, false)).toBe(false);
+  });
+  it('excludes: and includes: are the same as -tag: and tag:', () => {
+    expect(parseQuery('excludes:old includes:work not:x').chips).toEqual([{ key: 'tag', neg: true, value: 'old' }, { key: 'tag', neg: false, value: 'work' }, { key: 'tag', neg: true, value: 'x' }]);
+    expect(typedFilter('excludes:wo')).toEqual({ key: 'tag', neg: true, rest: 'wo' });
+    expect(buildQuery(parseQuery('excludes:old').chips, '')).toBe('-tag:old');
+  });
+  it('an imported emoji is told from a character', () => {
+    expect(isCustomEmoji(':0123456789ab:')).toBe(true);
+    expect(isCustomEmoji('😀')).toBe(false);
+    expect(isCustomEmoji(':short:')).toBe(false);
   });
 });

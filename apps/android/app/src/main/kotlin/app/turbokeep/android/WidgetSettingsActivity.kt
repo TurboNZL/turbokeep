@@ -87,6 +87,8 @@ class WidgetSettingsActivity : AppCompatActivity() {
         // text size 50% .. 200% in steps of 10 (0..15); space -10 .. 20 dp (0..30)
         slider("Text size", 15, Math.round((prefs.widgetZoom - 0.5f) * 10f), { "${50 + it * 10}%" }) { prefs.widgetZoom = 0.5f + it / 10f }
         slider("Space between items", 30, prefs.widgetSpacing + 10, { "${it - 10} dp" }) { prefs.widgetSpacing = it - 10 }
+        // the round buttons floating over the corners (Android 12 and later can resize them): 24 .. 56 dp
+        slider("Button size", 32, prefs.widgetButton - 24, { "${it + 24} dp" }) { prefs.widgetButton = it + 24 }
 
         root.addView(TextView(this).apply { text = "Order"; setPadding(0, pad / 2, 0, 0) })
         val group = RadioGroup(this)
@@ -100,16 +102,19 @@ class WidgetSettingsActivity : AppCompatActivity() {
         root.addView(group)
 
         root.addView(CheckBox(this).apply {
+            text = "Show the tags on items"; isChecked = prefs.widgetShowTags
+            setOnCheckedChangeListener { _, on -> prefs.widgetShowTags = on; WidgetRefresh.redrawAll(applicationContext) }
+        })
+        root.addView(CheckBox(this).apply {
             text = "The open button shows these settings first"; isChecked = prefs.openShowsSettings
             setOnCheckedChangeListener { _, on -> prefs.openShowsSettings = on; WidgetRefresh.redrawAll(applicationContext) }
         })
         root.addView(TextView(this).apply { text = "Off: the open button goes straight to TurboKeep. These settings stay one long press away on the widget (Reconfigure)."; textSize = 12f })
 
-        val open = Button(this).apply { text = "Open TurboKeep"; setOnClickListener { startActivity(Intent(this@WidgetSettingsActivity, MainActivity::class.java)); finish() } }
-        val add = Button(this).apply { text = "Add something"; setOnClickListener { startActivity(Intent(this@WidgetSettingsActivity, QuickAddActivity::class.java)); finish() } }
-        val server = Button(this).apply { text = "Server and Cloudflare Access"; setOnClickListener { startActivity(Intent(this@WidgetSettingsActivity, SetupActivity::class.java)) } }
+        val open = Button(this).apply { text = "Open TurboKeep"; setOnClickListener { startActivity(Intent(this@WidgetSettingsActivity, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); finish() } }
+        val server = Button(this).apply { text = "Server and Cloudflare Access"; setOnClickListener { startActivity(Intent(this@WidgetSettingsActivity, SetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
         val done = Button(this).apply { text = "Done"; setOnClickListener { finish() } }
-        root.addView(LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.END; addView(add); addView(open) })
+        root.addView(open, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.END; addView(server); addView(done) })
         setContentView(ScrollView(this).apply { addView(root) })
     }
