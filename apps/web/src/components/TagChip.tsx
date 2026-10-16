@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Emoji } from '../lib/emoji.tsx';
 import { useStore } from '../lib/store.ts';
 import { cn } from '../lib/cn.ts';
 
@@ -13,7 +14,7 @@ export function TagChip({ title, className, children, short }: { title: string; 
   const { emoji, color } = useTagLook(title);
   return (
     <span className={cn('chip inline-flex items-center gap-1', className)} style={color ? { backgroundColor: `#${color}26`, borderColor: `#${color}99` } : undefined}>
-      {emoji && <span aria-hidden>{emoji}</span>}{short ? title.split('.').pop() : title}{children}
+      {emoji && <Emoji value={emoji} />}{short ? title.split('.').pop() : title}{children}
     </span>
   );
 }

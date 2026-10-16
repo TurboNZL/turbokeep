@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Emoji } from '../lib/emoji.tsx';
 import { X } from 'lucide-react';
 import { DndContext, MouseSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -70,7 +71,7 @@ export function TagInput({ value, onChange, placeholder = 'Add a tag, press Ente
         <div className="bt-menu absolute left-0 right-0 z-30 mt-1 max-h-52 overflow-y-auto py-1" role="listbox" aria-label="Suggestions">
           {suggestions.map((t, i) => (
             <button key={t.title} type="button" role="option" aria-selected={i === hi} className={cn('flex w-full items-center gap-2 px-3 py-2 text-left text-sm', i === hi && 'bt-select-hi')} onMouseDown={(e) => { e.preventDefault(); add(t.title); }}>
-              {t.emoji && <span aria-hidden>{t.emoji}</span>}<span className="min-w-0 flex-1 truncate">{t.title}</span>
+              {t.emoji && <Emoji value={t.emoji} />}<span className="min-w-0 flex-1 truncate">{t.title}</span>
             </button>))}
         </div>)}
     </div>

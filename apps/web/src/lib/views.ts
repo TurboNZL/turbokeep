@@ -1,5 +1,5 @@
 import type { Note, NoteParams } from './api.ts';
-import type { SortId } from './settings.ts';
+import type { CountTasks, SortId } from './settings.ts';
 
 /**
  * What Home (and the Archive, which is organised the same way) shows: the Tasks (everything with a checkbox, the default), every note, what is due soon,
@@ -30,11 +30,14 @@ export function homeLink(noteId: string | null | undefined, f: Partial<HomeFilte
 }
 
 /** The API parameters for a filter (`archive`: the archive's notes instead of the live ones). The list only needs a preview of each text, so excerpts are asked for. */
-export function viewParams(f: HomeFilter, archive = false): NoteParams {
+/** Are tasks that carry a tag counted and listed under it on this page? (Settings > Items > Tasks in tags) */
+export const tasksInTags = (mode: CountTasks, archive: boolean) => mode === 'both' || (mode === 'home' && !archive) || (mode === 'archive' && archive);
+
+export function viewParams(f: HomeFilter, archive = false, withTasks = false): NoteParams {
   const p: NoteParams = { excerpt: '1' };
   if (archive) p.view = 'archived';
-  if (f.q) { p.q = f.q; if (f.tag) { p.tag = f.tag; p.list = '0'; } return p; } // a search looks through the page you are on (the others are offered when they hold results)
-  if (f.tag) { p.tag = f.tag; p.list = '0'; return p; }
+  if (f.q) { p.q = f.q; if (f.tag) { p.tag = f.tag; if (!withTasks) p.list = '0'; } return p; } // a search looks through the page you are on (the others are offered when they hold results)
+  if (f.tag) { p.tag = f.tag; if (!withTasks) p.list = '0'; return p; }
   if (f.scope === 'list') p.list = '1';
   else if (f.scope === 'due') p.due = 'any';
   return p;
@@ -43,11 +46,11 @@ export function viewParams(f: HomeFilter, archive = false): NoteParams {
 export const hasTag = (n: Note, tag: string) => n.tags.some((t) => t === tag || t.startsWith(`${tag}.`));
 
 /** Does a note belong in the list the filter describes? Used to update the list at once after a change, without asking the server again. */
-export function matchesFilter(n: Note, f: HomeFilter, archive = false): boolean {
+export function matchesFilter(n: Note, f: HomeFilter, archive = false, withTasks = false): boolean {
   if (n.trashed) return false;
   if (n.archived !== archive) return false;
-  if (f.q) return !f.tag || (hasTag(n, f.tag) && !n.onList); // the server chose these; keep them while they are being changed
-  if (f.tag) return hasTag(n, f.tag) && !n.onList;
+  if (f.q) return !f.tag || (hasTag(n, f.tag) && (withTasks || !n.onList)); // the server chose these; keep them while they are being changed
+  if (f.tag) return hasTag(n, f.tag) && (withTasks || !n.onList);
   if (f.scope === 'list') return n.onList;
   if (f.scope === 'due') return !!n.dueDate;
   return true;

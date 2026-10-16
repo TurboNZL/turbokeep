@@ -11,6 +11,7 @@ import { TagInput } from './TagInput.tsx';
 import { TagPicker } from './TagPicker.tsx';
 import { AutoText } from './AutoText.tsx';
 import { titleOverflow } from '../lib/title.ts';
+import { recall, remember } from '../lib/cache.ts';
 
 type Save = 'saved' | 'saving' | 'dirty' | 'offline' | 'conflict';
 type Meta = Pick<Note, 'pinned' | 'archived' | 'trashed' | 'onList' | 'dueDate' | 'percentDone' | 'tags'>;
@@ -22,12 +23,14 @@ const metaOf = (n: Note): Meta => ({ pinned: n.pinned, archived: n.archived, tra
  * Everything else (pin, finish, tags, date...) is saved at once and is not part of that, so the list and the editor can both change a note while you type.
  */
 export function NoteEditor({ id, onBack, onGone, onOpenNote, startPicking, onPicked }: { id: string; onBack?: () => void; onGone: () => void; onOpenNote: (id: string) => void; /** open the tag picker at once (the widget's "Save to memory") */ startPicking?: boolean; onPicked?: () => void }) {
-  const [detail, setDetail] = useState<Note | null>(null);
+  const [detail, setDetail] = useState<Note | null>(() => recall<Note>(`note:${id}`) ?? null);
   const [missing, setMissing] = useState(false);
   useEffect(() => {
     let alive = true;
-    setDetail(null); setMissing(false);
-    api.noteOrNull(id).then((d) => { if (!alive) return; if (d) setDetail(d); else setMissing(true); });
+    // a copy kept from before opens at once; the server is asked anyway (a change made elsewhere shows up as the usual "changed elsewhere" choice, never as a silent overwrite)
+    const hit = recall<Note>(`note:${id}`);
+    setDetail(hit ?? null); setMissing(false);
+    api.noteOrNull(id).then((d) => { if (!alive) return; if (d) { remember(`note:${id}`, d, false); if (!hit) setDetail(d); } else setMissing(true); });
     return () => { alive = false; };
   }, [id]);
   if (missing) return <p className="p-6 text-sm text-muted">That note no longer exists. <button className="underline" onClick={onGone}>Back to the list</button></p>;
@@ -48,10 +51,11 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
   const descEl = useRef<HTMLTextAreaElement>(null);
   const caret = useRef<number | null>(null); // where typing goes on in the description (after an over-long title moved there, or when a rendered note was clicked)
   useEffect(() => { if (caret.current !== null && descEl.current) { const c = caret.current; caret.current = null; descEl.current.focus(); descEl.current.setSelectionRange(c, c); } });
-  const [picking, setPicking] = useState(!!startPicking);
-  useEffect(() => { if (startPicking) onPicked?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [picking, setPicking] = useState(!!startPicking && !note.tags.length);
+  // the widget's "Send to tags": an item that has tags goes straight to them, one without asks which
+  useEffect(() => { if (startPicking) { onPicked?.(); if (note.tags.length && note.onList) set({ onList: false }); } }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const base = useRef(note.updatedAt);
-  const pending = useRef<{ title?: string; text?: string; noteType?: string } | null>(null);
+  const pending = useRef<{ title?: string; text?: string; noteType?: string; autoTitle?: boolean } | null>(null);
   const timer = useRef<number>();
   const firstTyped = useRef(0); // when the oldest unsaved keystroke happened: a long burst of typing is still saved every few seconds
   const inflight = useRef(false);
@@ -69,7 +73,7 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
     const patch = pending.current; pending.current = null; firstTyped.current = 0; inflight.current = true; setStatus('saving');
     try {
       const saved = await api.updateNote(note.id, { ...patch, base: force ? undefined : base.current });
-      base.current = saved.updatedAt; replaceNote(excerpt(saved));
+      base.current = saved.updatedAt; replaceNote(excerpt(saved)); remember(`note:${note.id}`, saved, false);
       setStatus(pending.current ? 'dirty' : 'saved');
     } catch (e) {
       pending.current = { ...patch, ...(pending.current ?? {}) }; // what was typed while this was in flight wins
@@ -80,7 +84,7 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
     if (pending.current && !theirsRef.current) timer.current = window.setTimeout(() => void flush(), 300);
   }, [note.id, replaceNote]);
 
-  const typed = (patch: { title?: string; text?: string; noteType?: string }, now = false) => {
+  const typed = (patch: { title?: string; text?: string; noteType?: string; autoTitle?: boolean }, now = false) => {
     if (!pending.current) firstTyped.current = Date.now();
     pending.current = { ...pending.current, ...patch };
     window.clearTimeout(timer.current);
@@ -143,7 +147,7 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
         onChange={(e) => {
           const o = titleOverflow(e.target.value, text);
           if (!o) { setTitle(e.target.value); typed({ title: e.target.value }); return; }
-          setTitle(o.title); setText(o.text); setEditing(true); caret.current = o.caret; typed({ title: o.title, text: o.text }); // too long for a title: it goes into the description and typing goes on there
+          setTitle(o.title); setText(o.text); setEditing(true); caret.current = o.caret; typed({ title: o.title, text: o.text, autoTitle: true }); // too long for a title: it goes into the description and typing goes on there
         }} />
       <div className={cn('grid gap-3', split && 'lg:grid-cols-2')}>
         {showEditor && <AutoText ref={descEl} className={cn('input note-text min-h-[5.5rem] w-full resize-none', font)} rows={3} aria-label="Description" placeholder="Description, notes, anything…" value={text} readOnly={ro} autoFocus={markdown && !split && editing && !!text.trim()}
@@ -160,18 +164,18 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
       {!ro && (
         <div className="card space-y-3 p-3">
           <div className="space-y-1.5"><span className="text-xs font-medium text-muted">Tags</span><TagInput value={meta.tags} onChange={(tags) => set({ tags })} /></div>
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          {meta.onList && <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
             <label className="flex items-center gap-2 text-sm">Due
               <input type="date" className="input !w-auto" value={toLocalInput(meta.dueDate).slice(0, 10)} onChange={(e) => set({ dueDate: e.target.value ? new Date(`${e.target.value}T12:00`).toISOString() : null })} />
               {meta.dueDate && <button type="button" className="btn btn-ghost !px-2 text-xs" onClick={() => set({ dueDate: null })}><RotateCcw size={13} />Clear</button>}</label>
-          </div>
+          </div>}
           {meta.onList && <label className="flex items-center gap-3 text-sm">Progress
             <input type="range" className="bt-range bt-hit min-w-0 flex-1" min={0} max={100} step={5} value={pct} style={{ '--p': `${pct}%` } as CSSProperties} aria-label={`Progress: ${pct}%`} onChange={(e) => setMeta((m) => ({ ...m, percentDone: Number(e.target.value) / 100 }))}
               onPointerUp={() => set({ percentDone: meta.percentDone })} onKeyUp={() => set({ percentDone: meta.percentDone })} onBlur={() => set({ percentDone: meta.percentDone })} />
             <span className="w-10 text-right tabular-nums">{pct}%</span></label>}
           <div className="flex flex-wrap gap-2">
             {meta.onList
-              ? <button type="button" className="btn !min-h-11" onClick={() => setPicking(true)}><Tags size={16} />Send to tags</button>
+              ? <button type="button" className="btn !min-h-11" onClick={() => (meta.tags.length ? set({ onList: false }) : setPicking(true))}><Tags size={16} />Send to tags</button>
               : <button type="button" className="btn !min-h-11" onClick={() => set({ onList: true })}><ListChecks size={16} />Send to tasks</button>}
             <label className="ml-auto flex items-center gap-2 text-xs text-muted"><input type="checkbox" checked={markdown} onChange={(e) => { const t = e.target.checked ? 'markdown' : 'plain-text'; setNoteType(t); setEditing(!e.target.checked || !text.trim()); typed({ noteType: t }, true); }} />Markdown</label>
           </div>

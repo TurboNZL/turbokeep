@@ -16,6 +16,18 @@ export interface DeviceSettings {
   markdownSplit: boolean;
   /** How Home shows items: 'list' (a column with the editor beside it), 'wall' (Google Keep: cards, an item opens in a window) or 'pane' (cards, an item opens in a panel on the right). */
   viewStyle: ViewStyle;
+  /** On the Home list with nothing open, the list takes the whole width (no panel beside it). */
+  fullWhenIdle: boolean;
+  /** The divider between the list and the open note shows itself when the open note is not under the tag the list is showing. */
+  dividerWhenForeign: boolean;
+  /** Where tasks that carry a tag are counted and listed under that tag: never (only notes sent to the tag), on Home, in the Archive, or both. */
+  countTasks: CountTasks;
+  /** How much the page remembers so it opens faster (see lib/cache.ts). */
+  cacheLevel: CacheLevel;
+  /** The size of the buttons on an item (the check box, the pencil, the dots). */
+  buttonSize: 'small' | 'medium' | 'large';
+  /** The width of the editor panel beside the Keep wall, in rem (drag the divider to change it). */
+  paneWidth: number;
   /** The Cloudflare Access service token of this server, kept for the pairing code (the phone needs it when the server sits behind Cloudflare Access). */
   cfAccessId: string;
   cfAccessSecret: string;
@@ -30,16 +42,18 @@ export interface DeviceSettings {
   /** The order of the pages in the side bar, top bar or dock. */
   navOrder: NavId[];
 }
+export type CountTasks = 'never' | 'home' | 'archive' | 'both';
+export type CacheLevel = 'off' | 'low' | 'medium' | 'high';
 export type ViewStyle = 'list' | 'wall' | 'pane';
 export type SortId = 'manual' | 'newest' | 'edited' | 'oldest' | 'title' | 'due';
 export type NavId = 'home' | 'archive' | 'bin' | 'settings';
-export const SIZE_LIMITS = { railWidth: { min: 7, max: 22, step: 0.5 }, listWidth: { min: 18, max: 52, step: 1 }, cardWidth: { min: 11, max: 30, step: 0.5 } } as const;
+export const SIZE_LIMITS = { railWidth: { min: 7, max: 22, step: 0.5 }, listWidth: { min: 18, max: 70, step: 1 }, cardWidth: { min: 11, max: 30, step: 0.5 }, paneWidth: { min: 18, max: 60, step: 1 } } as const;
 export const SORT_IDS: SortId[] = ['manual', 'newest', 'edited', 'oldest', 'title', 'due'];
 export const NAV_IDS: NavId[] = ['home', 'archive', 'bin', 'settings'];
 
 export const DEFAULT_SETTINGS: DeviceSettings = {
   theme: 'auto', ui: 'auto', layout: 'side', glass: 'regular', wallpaper: false, wallpaperDarkness: 0.35, wallpaperCustom: false,
-  themeUpdates: true, themesToken: '', noteFont: 'sans', markdownSplit: false, viewStyle: 'list', cfAccessId: '', cfAccessSecret: '', sort: 'manual', sorts: {}, railWidth: 11, listWidth: 28, cardWidth: 16, navOrder: NAV_IDS,
+  themeUpdates: true, themesToken: '', noteFont: 'sans', markdownSplit: false, viewStyle: 'list', cfAccessId: '', cfAccessSecret: '', fullWhenIdle: false, dividerWhenForeign: false, countTasks: 'never', cacheLevel: 'medium', buttonSize: 'medium', paneWidth: 28, sort: 'manual', sorts: {}, railWidth: 11, listWidth: 28, cardWidth: 16, navOrder: NAV_IDS,
 };
 
 const KEY = 'turbokeep.settings';
@@ -55,7 +69,7 @@ export function loadSettings(): DeviceSettings {
     if (!['list', 'wall', 'pane'].includes(s.viewStyle)) s.viewStyle = raw.keepView ? 'wall' : 'list'; // the Keep switch from before
     if (!SORT_IDS.includes(s.sort)) s.sort = 'manual'; // 'auto' from before
     s.sorts = Object.fromEntries(Object.entries(s.sorts && typeof s.sorts === 'object' ? s.sorts : {}).filter(([, v]) => SORT_IDS.includes(v as SortId))) as Record<string, SortId>;
-    for (const k of ['railWidth', 'listWidth', 'cardWidth'] as const) { const l = SIZE_LIMITS[k]; s[k] = Number.isFinite(s[k]) ? Math.min(l.max, Math.max(l.min, s[k])) : DEFAULT_SETTINGS[k]; }
+    for (const k of ['railWidth', 'listWidth', 'cardWidth', 'paneWidth'] as const) { const l = SIZE_LIMITS[k]; s[k] = Number.isFinite(s[k]) ? Math.min(l.max, Math.max(l.min, s[k])) : DEFAULT_SETTINGS[k]; }
     s.navOrder = cleanNavOrder(s.navOrder);
     return s;
   } catch { return DEFAULT_SETTINGS; }

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { type DB, type Row, all, get, run, tx, now } from './db.ts';
 
 export class HttpError extends Error {
@@ -29,11 +29,13 @@ export function createUser(db: DB, username: string, passwordHash: string): numb
 export interface NoteDto {
   id: string; title: string; text: string; noteType: string; pinned: boolean; archived: boolean; trashed: boolean;
   onList: boolean; dueDate: string | null; percentDone: number; position: number; tags: string[]; createdAt: string; updatedAt: string;
+  /** the title is the date the app put there (the note was typed long), not something you wrote: lists hide it and show the text */
+  autoTitle: boolean;
 }
 
 const noteDto = (r: Row, tags: string[]): NoteDto => ({
   id: r.id, title: r.title, text: r.text, noteType: r.note_type, pinned: bool(r.pinned), archived: bool(r.archived), trashed: bool(r.trashed),
-  onList: bool(r.on_list), dueDate: r.due_date, percentDone: r.percent_done, position: r.position, tags, createdAt: r.created_at, updatedAt: r.updated_at,
+  onList: bool(r.on_list), dueDate: r.due_date, percentDone: r.percent_done, position: r.position, tags, createdAt: r.created_at, updatedAt: r.updated_at, autoTitle: bool(r.auto_title),
 });
 
 function tagMap(db: DB, userId: number): Map<string, string[]> {
@@ -60,16 +62,18 @@ export function dateRange(text: string): { from: string; to: string } | null {
 export interface Search { words: string[]; tags: string[]; notTags: string[]; before: { from: string; to: string }[]; after: { from: string; to: string }[]; is: string[]; notIs: string[]; has: string[]; notHas: string[] }
 /**
  * The search language, in the style of Discord's: words, `"a phrase"`, and filters `tag:work` (also finds `work.reports`), `-tag:old` (leaves them out),
- * `before:2019-06` / `after:2020` (when the note was made; a year or a month is the whole period), `is:task|note|pinned|markdown`, `has:date|tags|text`.
+ * (`exclude:work` and `include:work` mean the same as `-tag:work` and `tag:work`), `before:2019-06` / `after:2020` (when the note was made; a year or a month is the whole period), `is:task|note|pinned|markdown`, `has:date|tags|text`.
  * A `-` in front of any filter turns it round. Filters combine with AND, so `tag:a tag:b` finds notes with both. A filter that makes no sense is read as a word.
  */
 export function parseSearch(q: string): Search {
   const out: Search = { words: [], tags: [], notTags: [], before: [], after: [], is: [], notIs: [], has: [], notHas: [] };
-  const re = /(-?)(tag|before|after|is|has):(?:"([^"]*)"|(\S+))|"([^"]+)"|(\S+)/gi;
+  const re = /(-?)(tags?|includes?|excludes?|not|before|after|is|has):(?:"([^"]*)"|(\S+))|"([^"]+)"|(\S+)/gi;
   for (const m of q.matchAll(re)) {
     if (m[2]) {
-      const key = m[2].toLowerCase(), neg = m[1] === '-', val = (m[3] ?? m[4] ?? '').trim();
+      let key = m[2].toLowerCase(), neg = m[1] === '-';
+      const val = (m[3] ?? m[4] ?? '').trim();
       if (!val) continue;
+      if (key === 'exclude' || key === 'excludes' || key === 'not') { key = 'tag'; neg = !neg; } else if (key === 'include' || key === 'includes' || key === 'tags') key = 'tag';
       if (key === 'tag') (neg ? out.notTags : out.tags).push(val);
       else if (key === 'is') (neg ? out.notIs : out.is).push(val.toLowerCase());
       else if (key === 'has') (neg ? out.notHas : out.has).push(val.toLowerCase());
@@ -166,7 +170,7 @@ function setNoteTags(db: DB, userId: number, noteId: string, tags: unknown) {
 
 export interface NoteInput {
   title?: string; text?: string; noteType?: string; pinned?: boolean; archived?: boolean; trashed?: boolean; tags?: string[];
-  onList?: boolean; dueDate?: string | null; percentDone?: number; position?: number;
+  onList?: boolean; dueDate?: string | null; percentDone?: number; position?: number; autoTitle?: boolean;
 }
 
 /** A new note goes to the top of the hand-made order unless it says where it belongs (imports do). */
@@ -175,9 +179,9 @@ const topPosition = (db: DB, userId: number) => Number(get(db, 'select coalesce(
 export function createNote(db: DB, userId: number, i: NoteInput, keep?: { id?: string; createdAt?: string; updatedAt?: string }): NoteDto {
   return tx(db, () => {
     const id = keep?.id ?? randomUUID(), t = now();
-    run(db, 'insert into notes (id, user_id, title, text, note_type, pinned, archived, trashed, on_list, due_date, percent_done, position, created_at, updated_at) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    run(db, 'insert into notes (id, user_id, title, text, note_type, pinned, archived, trashed, on_list, due_date, percent_done, position, created_at, updated_at, auto_title) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       id, userId, String(i.title ?? '').slice(0, 1000), String(i.text ?? ''), i.noteType || 'plain-text', +!!i.pinned, +!!i.archived, +!!i.trashed, +!!i.onList, dateOrNull(i.dueDate),
-      clamp(i.percentDone, 0, 1), i.position === undefined || !Number.isFinite(Number(i.position)) ? topPosition(db, userId) : Number(i.position), keep?.createdAt ?? t, keep?.updatedAt ?? t);
+      clamp(i.percentDone, 0, 1), i.position === undefined || !Number.isFinite(Number(i.position)) ? topPosition(db, userId) : Number(i.position), keep?.createdAt ?? t, keep?.updatedAt ?? t, +!!i.autoTitle);
     setNoteTags(db, userId, id, i.tags);
     return getNote(db, userId, id);
   });
@@ -200,9 +204,11 @@ export function updateNote(db: DB, userId: number, id: string, i: NoteInput, bas
       archived: i.archived === undefined ? cur.archived : +!!i.archived, trashed: i.trashed === undefined ? cur.trashed : +!!i.trashed,
       on_list: i.onList === undefined ? cur.on_list : +!!i.onList, due_date: i.dueDate === undefined ? cur.due_date : dateOrNull(i.dueDate),
       percent_done: i.percentDone === undefined ? cur.percent_done : clamp(i.percentDone, 0, 1), position: i.position === undefined ? cur.position : Number(i.position) || 0,
+      // typing a title of your own ends the app's: it stays an app title only while the title is left as it was (or the page says so)
+      auto_title: i.autoTitle !== undefined ? +!!i.autoTitle : i.title !== undefined && String(i.title).slice(0, 1000) !== cur.title ? 0 : cur.auto_title,
     };
-    run(db, 'update notes set title=?, text=?, note_type=?, pinned=?, archived=?, trashed=?, on_list=?, due_date=?, percent_done=?, position=?, updated_at=? where id=?',
-      next.title, next.text, next.note_type, next.pinned, next.archived, next.trashed, next.on_list, next.due_date, next.percent_done, next.position, content ? now() : cur.updated_at, id);
+    run(db, 'update notes set title=?, text=?, note_type=?, pinned=?, archived=?, trashed=?, on_list=?, due_date=?, percent_done=?, position=?, updated_at=?, auto_title=? where id=?',
+      next.title, next.text, next.note_type, next.pinned, next.archived, next.trashed, next.on_list, next.due_date, next.percent_done, next.position, content ? now() : cur.updated_at, next.auto_title, id);
     if (i.tags) setNoteTags(db, userId, id, i.tags);
     return getNote(db, userId, id);
   });
@@ -247,9 +253,10 @@ export function emptyTrash(db: DB, userId: number): number {
 /**
  * Tags with how many notes carry each: only notes that were sent to tags (off the task list; a tag on a task does not show the task under that tag),
  * and only live ones (not archived, not binned), or with `archived` only the archived ones (the archive has the same tag column as Home).
+ * `withTasks` (a setting of the page) counts the tasks that carry the tag too.
  */
-export function listTags(db: DB, userId: number, pile: 'live' | 'archived' = 'live') {
-  return all(db, `select t.title, t.emoji, t.color, count(n.id) as count from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id and n.trashed = 0 and n.archived = ? and n.on_list = 0
+export function listTags(db: DB, userId: number, pile: 'live' | 'archived' = 'live', withTasks = false) {
+  return all(db, `select t.title, t.emoji, t.color, count(n.id) as count from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id and n.trashed = 0 and n.archived = ?${withTasks ? '' : ' and n.on_list = 0'}
     where t.user_id = ? group by t.id order by t.title`, pile === 'archived' ? 1 : 0, userId).map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, count: Number(r.count) }));
 }
 /** For the tag manager: every tag wherever its notes are (on Home as notes, on the task list, in the archive, in the bin), and the parents that only exist as the front of a sub-tag's name. */
@@ -260,6 +267,7 @@ export function listTagsEverywhere(db: DB, userId: number) {
     from tags t left join note_tags nt on nt.tag_id = t.id left join notes n on n.id = nt.note_id where t.user_id = ? group by t.id order by t.title`, userId);
   return rows.map((r) => ({ title: r.title as string, emoji: r.emoji as string, color: r.color as string, notes: Number(r.notes), tasks: Number(r.tasks), archived: Number(r.archived), trashed: Number(r.trashed) }));
 }
+export const CUSTOM = /^:[0-9a-f]{12}:$/;
 /** The look of a tag: at most one emoji (or a short symbol) and a six-digit colour without '#'; empty clears it. */
 export function styleTag(db: DB, userId: number, title: string, style: { emoji?: unknown; color?: unknown }) {
   let src = get(db, 'select id, emoji, color from tags where user_id = ? and title = ?', userId, title);
@@ -267,7 +275,11 @@ export function styleTag(db: DB, userId: number, title: string, style: { emoji?:
   if (!src && get(db, "select 1 x from tags where user_id = ? and substr(title, 1, ?) = ?", userId, title.length + 1, `${title}.`)) { ensureTag(db, userId, title); src = get(db, 'select id, emoji, color from tags where user_id = ? and title = ?', userId, title); }
   if (!src) throw new HttpError(404, 'Tag not found');
   let emoji = String(src.emoji), color = String(src.color);
-  if (style.emoji !== undefined) { emoji = [...String(style.emoji).trim()].slice(0, 4).join(''); }
+  if (style.emoji !== undefined) {
+    const e = String(style.emoji).trim();
+    // an imported emoji is ':<id>:' and must be one of yours
+    emoji = CUSTOM.test(e) ? (get(db, 'select 1 x from custom_emoji where id = ? and user_id = ?', e.slice(1, -1), userId) ? e : '') : [...e].slice(0, 4).join('');
+  }
   if (style.color !== undefined) {
     color = String(style.color).trim().replace(/^#/, '').toLowerCase();
     if (color && !/^[0-9a-f]{6}$/.test(color)) throw new HttpError(400, 'A colour is six hex digits, like ff8800');
@@ -297,3 +309,28 @@ export function deleteTag(db: DB, userId: number, title: string, tree = false) {
   run(db, 'delete from tags where user_id = ? and title = ?', userId, title);
   if (tree) run(db, 'delete from tags where user_id = ? and substr(title, 1, ?) = ?', userId, title.length + 1, `${title}.`);
 }
+
+// ---- imported emoji ----
+export interface EmojiRow { id: string; name: string }
+const MAX_EMOJI = 300, MAX_EMOJI_BYTES = 120_000;
+const isPng = (b: Uint8Array) => b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
+const isWebp = (b: Uint8Array) => b.length > 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50;
+
+export const listEmoji = (db: DB, userId: number): EmojiRow[] => all(db, 'select id, name from custom_emoji where user_id = ? order by created_at', userId).map((r) => ({ id: r.id as string, name: r.name as string }));
+
+/** The page has already shrunk the picture to emoji size; this only checks it is a small PNG or WebP and keeps it. */
+export function addEmoji(db: DB, userId: number, name: unknown, data: Uint8Array, id?: string): EmojiRow {
+  if (data.length > MAX_EMOJI_BYTES) throw new HttpError(413, 'That emoji is too big: the page should shrink it to emoji size first');
+  const mime = isPng(data) ? 'image/png' : isWebp(data) ? 'image/webp' : null;
+  if (!mime) throw new HttpError(400, 'An emoji is a PNG or WebP picture');
+  if (Number(get(db, 'select count(*) c from custom_emoji where user_id = ?', userId)!.c) >= MAX_EMOJI) throw new HttpError(400, `You can keep ${MAX_EMOJI} emoji`);
+  const key = id ?? randomBytes(6).toString('hex');
+  run(db, 'insert into custom_emoji (id, user_id, name, mime, data, created_at) values (?,?,?,?,?,?)', key, userId, String(name ?? '').trim().slice(0, 60), mime, data, now());
+  return { id: key, name: String(name ?? '').trim().slice(0, 60) };
+}
+export const getEmoji = (db: DB, userId: number, id: string) => get(db, 'select mime, data from custom_emoji where id = ? and user_id = ?', id, userId) as { mime: string; data: Uint8Array } | undefined;
+export function deleteEmoji(db: DB, userId: number, id: string) {
+  run(db, 'delete from custom_emoji where id = ? and user_id = ?', id, userId);
+  run(db, "update tags set emoji = '' where user_id = ? and emoji = ?", userId, `:${id}:`);
+}
+export const exportEmoji = (db: DB, userId: number) => all(db, 'select id, name, mime, data from custom_emoji where user_id = ? order by created_at', userId).map((r) => ({ id: r.id as string, name: r.name as string, mime: r.mime as string, data: Buffer.from(r.data as Uint8Array).toString('base64') }));

@@ -39,6 +39,12 @@ export function useItemUi({ pile, open, closeIfOpen }: { pile: Pile; open: (id: 
   }, [undoable]);
 
   const sendToTasks = useCallback(async (n: Note) => { const ok = await patchNote(n.id, { onList: true }); if (ok) undoable(`Sent “${titleOf(n)}” to your tasks`, () => void patchNote(n.id, { onList: false })); }, [undoable]);
+  /** a task that already has tags goes straight to them; one without tags asks which */
+  const sendToTags = useCallback(async (n: Note) => {
+    if (!n.tags.length) { setPicker({ n, send: true }); return; }
+    const ok = await patchNote(n.id, { onList: false });
+    if (ok) undoable(`Sent “${titleOf(n)}” to ${n.tags.map((t) => t.split('.').pop()).join(', ')}`, () => void patchNote(n.id, { onList: true }));
+  }, [undoable]);
   const bin = useCallback((n: Note) => { closeIfOpen(n.id); void patchNote(n.id, { trashed: true }).then((ok) => ok && undoable(`Moved “${titleOf(n)}” to the bin`, () => void patchNote(n.id, { trashed: false }))); }, [undoable, closeIfOpen]);
   const download = async (n: Note) => {
     const full = (await api.noteOrNull(n.id)) ?? n;
@@ -58,7 +64,7 @@ export function useItemUi({ pile, open, closeIfOpen }: { pile: Pile; open: (id: 
         ? { key: 'done', label: n.archived ? 'Reopen' : 'Finish', icon: n.archived ? <RotateCcw size={15} /> : <CheckCircle2 size={15} />, onSelect: () => void toggleDone(n) }
         : { key: 'arch', label: n.archived ? 'Unarchive' : 'Archive', icon: n.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />, onSelect: () => void patchNote(n.id, { archived: !n.archived }) },
       n.onList
-        ? { key: 'send', label: 'Send to tags…', icon: <Tags size={15} />, onSelect: () => setPicker({ n, send: true }) }
+        ? { key: 'send', label: n.tags.length ? 'Send to tags' : 'Send to tags…', icon: <Tags size={15} />, onSelect: () => void sendToTags(n) }
         : { key: 'send', label: 'Send to tasks', icon: <ListChecks size={15} />, onSelect: () => void sendToTasks(n) },
       { key: 'tags', label: n.tags.length ? 'Change tags…' : 'Add tags…', icon: <Tags size={15} />, onSelect: () => setPicker({ n, send: false }) },
       { key: 'due', label: n.dueDate ? 'Change the date…' : 'Set a date…', icon: <CalendarDays size={15} />, onSelect: () => setDueFor(n) },
@@ -79,7 +85,7 @@ export function useItemUi({ pile, open, closeIfOpen }: { pile: Pile; open: (id: 
 
   const rowProps = (n: Note): Pick<ItemRowProps, 'finishing' | 'onToggleDone' | 'onMenu' | 'onSendToTags' | 'onSendToTasks' | 'onChangeTags' | 'onProgress' | 'onDue' | 'hideCheck'> => ({
     finishing: finishing.has(n.id), hideCheck: pile === 'bin',
-    onToggleDone: () => void toggleDone(n), onMenu: (x, y) => setMenu({ n, x, y }), onSendToTags: () => setPicker({ n, send: true }), onSendToTasks: () => void sendToTasks(n), onChangeTags: () => setPicker({ n, send: false }),
+    onToggleDone: () => void toggleDone(n), onMenu: (x, y) => setMenu({ n, x, y }), onSendToTags: () => void sendToTags(n), onSendToTasks: () => void sendToTasks(n), onChangeTags: () => setPicker({ n, send: false }),
     onProgress: (v) => void patchNote(n.id, { percentDone: v }), onDue: (iso) => void patchNote(n.id, { dueDate: iso }),
   });
   return { ui, rowProps, toggleDone, finishing };

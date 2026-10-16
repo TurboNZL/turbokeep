@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Emoji } from '../lib/emoji.tsx';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowDownUp, Pencil, Plus } from 'lucide-react';
 import { api, type Note, type TagInfo } from '../lib/api.ts';
 import { useStore } from '../lib/store.ts';
 import { cn } from '../lib/cn.ts';
-import { SORTS, canReorder, dueSoon, filterFromSearch, homeLink, matchesFilter, positionBetween, sortKey, sortNotes, viewParams, type HomeFilter } from '../lib/views.ts';
+import { SORTS, canReorder, dueSoon, filterFromSearch, homeLink, hasTag, matchesFilter, positionBetween, sortKey, sortNotes, tasksInTags, viewParams, type HomeFilter } from '../lib/views.ts';
 import { excerpt, pokeWidgets } from '../lib/actions.ts';
 import { notesKey, takeNotes } from '../lib/prefetch.ts';
+import { cacheLevel, recall, remember } from '../lib/cache.ts';
+import { SIZE_LIMITS } from '../lib/settings.ts';
+import { Divider } from '../components/Divider.tsx';
 import type { SortId } from '../lib/settings.ts';
 import { useItemUi } from '../lib/useItemUi.tsx';
 import { Select } from '../components/Select.tsx';
@@ -26,7 +30,7 @@ const SCOPE_NAMES = { list: 'Tasks', all: 'All notes', due: 'Due soon' } as cons
 const STICKY = 'md:sticky md:top-20 md:self-start md:max-h-[calc(100dvh-6.5rem-var(--dock-h,0px))] md:overflow-y-auto';
 
 /** What each filter last showed: coming back to Home (from Settings, say) draws the list at once and updates it behind the scenes. */
-const cache = new Map<string, Note[]>();
+const memo = { has: (k: string) => recall<Note[]>(`notes:${k}`) !== undefined, get: (k: string) => recall<Note[]>(`notes:${k}`), set: (k: string, v: Note[]) => remember(`notes:${k}`, v) };
 
 /**
  * Home: the tasks and tags column on the left, the list in the middle (the composer on top), the open item on the right. The Archive is the same page for
@@ -42,10 +46,11 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   const wide = useWide();
   const filter: HomeFilter = filterFromSearch(sp);
   const base = archive ? '/archive' : '/home';
-  const params = viewParams(filter, archive), key = notesKey(params);
+  const withTasks = tasksInTags(settings.countTasks, archive);
+  const params = viewParams(filter, archive, withTasks), key = notesKey(params);
   const [error, setError] = useState('');
   const [editingTag, setEditingTag] = useState<TagInfo | null>(null);
-  const [loaded, setLoaded] = useState(cache.has(key));
+  const [loaded, setLoaded] = useState(memo.has(key));
   const shown = useRef('');
 
   const go = useCallback((noteId: string | null | undefined, f: Partial<HomeFilter> = {}, replace = false) => nav(homeLink(noteId, { ...filter, ...f }, base), { replace }), [nav, base, filter.scope, filter.tag, filter.q]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -53,12 +58,22 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   const load = useCallback(async () => {
     try {
       const list = await (takeNotes(params) ?? api.notes(params)).catch(() => api.notes(params));
-      cache.set(key, list);
+      memo.set(key, list);
       if (shown.current === key) { setNotes(list); setLoaded(true); setError(''); }
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not load'); }
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { shown.current = key; setNotes(cache.get(key) ?? []); setLoaded(cache.has(key)); void load(); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (loaded && shown.current === key) cache.set(key, notes); }, [notes]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { shown.current = key; setNotes(memo.get(key) ?? []); setLoaded(memo.has(key)); void load(); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (loaded && shown.current === key) memo.set(key, notes); }, [notes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // High cache level: ask ahead in the background (the Archive's lists and the first items), so they open without a wait
+  useEffect(() => {
+    if (!loaded || cacheLevel() !== 'high') return;
+    const t = window.setTimeout(() => {
+      if (!archive) { const p = viewParams({ scope: 'list' }, true, tasksInTags(settings.countTasks, true)); void api.notes(p).then((l) => remember(`notes:${notesKey(p)}`, l), () => {}); }
+      for (const n of useStore.getState().notes.slice(0, 20)) void api.noteOrNull(n.id).then((d) => d && remember(`note:${n.id}`, d, false));
+    }, 1200);
+    return () => window.clearTimeout(t);
+  }, [loaded, key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // the open note is kept in the store: coming back from Settings (or a reload) shows it again on a wide screen
   useEffect(() => { if (id) setOpenNote(id); }, [id, setOpenNote]);
@@ -73,9 +88,9 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   // every page and tab keeps the order it was given; "Due soon" is always the closest first
   const skey = sortKey(filter, archive), sort = settings.sorts[skey] ?? settings.sort, soon = filter.scope === 'due' && !filter.tag && !filter.q;
   const visible = useMemo(() => {
-    const here = notes.filter((n) => matchesFilter(n, filter, archive));
+    const here = notes.filter((n) => matchesFilter(n, filter, archive, withTasks));
     return soon ? dueSoon(here) : sortNotes(here, sort);
-  }, [notes, sort, soon, archive, filter.scope, filter.tag, filter.q]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [notes, sort, soon, archive, withTasks, filter.scope, filter.tag, filter.q]); // eslint-disable-line react-hooks/exhaustive-deps
   const draggable = canReorder(sort, filter) && visible.length > 1;
   const openTitle = openNote ? (notes.find((n) => n.id === openNote) ? titleOf(notes.find((n) => n.id === openNote)!) : 'your note') : '';
   const name = filter.q ? 'Search' : filter.tag ? filter.tag.split('.').pop()! : SCOPE_NAMES[filter.scope];
@@ -84,7 +99,7 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   // the Archive's own tag column: only the tags something archived was sent to
   const [archiveTags, setArchiveTags] = useState<TagInfo[]>([]);
   const archivedCount = archive ? notes.length : 0;
-  useEffect(() => { if (archive) api.tags('archived').then((t) => setArchiveTags(t.filter((x) => x.count > 0)), () => {}); }, [archive, archivedCount]);
+  useEffect(() => { if (archive) api.tags('archived', withTasks).then((t) => setArchiveTags(t.filter((x) => x.count > 0)), () => {}); }, [archive, archivedCount, withTasks]);
 
   const added = useCallback((n: Note) => { upsertNote(excerpt(n)); }, [upsertNote]);
 
@@ -107,10 +122,16 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   };
   const listEl = keep ? <Wall items={visible} render={row} minRem={settings.cardWidth} /> : <ul className="space-y-1.5">{visible.map(row)}</ul>;
 
+  const listRef = useRef<HTMLElement>(null);
+  const rem = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const openObj = id ? notes.find((n) => n.id === id) : undefined;
+  // the divider shows itself when the list is one tag's and the open note is not under it (Settings > Appearance)
+  const foreign = settings.dividerWhenForeign && !!filter.tag && !!id && !(openObj && hasTag(openObj, filter.tag));
+  const idleFull = settings.fullWhenIdle && !id && !keep;
   const list = (
-    <section aria-label="Items" className="min-w-0 space-y-3">
+    <section ref={listRef} aria-label="Items" className="min-w-0 space-y-3">
       <div className="flex items-center gap-2">
-        <h1 className="min-w-0 flex-1 truncate py-1 text-xl font-bold leading-normal">{filter.tag && tags.find((t) => t.title === filter.tag)?.emoji} {heading}{filter.tag && filter.tag.includes('.') && <span className="text-sm font-normal text-muted"> · {filter.tag}</span>}</h1>
+        <h1 className="min-w-0 flex-1 truncate py-1 text-xl font-bold leading-normal">{filter.tag && tags.find((t) => t.title === filter.tag)?.emoji ? <Emoji value={tags.find((t) => t.title === filter.tag)!.emoji} /> : null} {heading}{filter.tag && filter.tag.includes('.') && <span className="text-sm font-normal text-muted"> · {filter.tag}</span>}</h1>
         {soon
           ? <span className="shrink-0 text-xs text-muted">Closest first</span>
           : <Select className="!w-44 shrink-0 text-sm" aria-label={`Sort ${name}`} value={sort} onChange={(v) => updateSettings({ sorts: { ...settings.sorts, [skey]: v as SortId } })} options={SORTS.map((x) => ({ value: x.id, label: x.label, icon: x.id === sort ? <ArrowDownUp size={14} className="shrink-0 text-accent" /> : undefined }))} />}
@@ -134,17 +155,23 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
       onScope={(s) => go(id, { scope: s, tag: undefined, q: undefined })} onTag={(t) => go(id, { tag: t || undefined, scope: 'list', q: undefined })} onEditTag={setEditingTag} />
   );
 
-  const panel = <div className={cn('min-w-0', STICKY)}>{editor}</div>;
+  const panel = (
+    <div className="relative min-w-0">
+      <Divider side="left" lit={foreign} label="Drag to change the width of the editor" onSize={(x, box) => updateSettings({ paneWidth: Math.round(Math.min(SIZE_LIMITS.paneWidth.max, Math.max(SIZE_LIMITS.paneWidth.min, (box.right - x) / rem()))) })} />
+      <div className={STICKY}>{editor}</div>
+    </div>);
   return (
     <>
       {keep ? (
-        <div className={cn('grid grid-cols-[minmax(0,1fr)] gap-4', pane && id ? 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)_minmax(22rem,30rem)]' : 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)]')}>{rail}{list}{pane && id && panel}</div>
+        <div className={cn('grid grid-cols-[minmax(0,1fr)] gap-4', pane && id ? 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)_minmax(18rem,var(--pane-w,28rem))]' : 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)]')}>{rail}{list}{pane && id && panel}</div>
       ) : (
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-[minmax(17rem,min(var(--list-w,26rem),50%))_minmax(0,1fr)] lg:grid-cols-[var(--rail-w,11rem)_minmax(17rem,min(var(--list-w,28rem),45%))_minmax(0,1fr)]">
+        <div className={cn('grid grid-cols-[minmax(0,1fr)] gap-4', idleFull ? 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)]' : 'md:grid-cols-[minmax(17rem,min(var(--list-w,26rem),70%))_minmax(0,1fr)] lg:grid-cols-[var(--rail-w,11rem)_minmax(17rem,min(var(--list-w,28rem),70%))_minmax(0,1fr)]')}>
           {(wide || !id) && <div className="min-w-0 md:col-span-2 lg:col-span-1">{rail}</div>}
           {(wide || !id) && list}
-          {id ? <div className={cn('min-w-0 md:col-start-2 md:row-start-2 lg:col-start-3 lg:row-start-1', STICKY)}>{editor}</div>
-            : wide && <Overview notes={visible} filter={filter} archive={archive} onOpen={(nid) => go(nid)} />}
+          {id ? <div className="relative min-w-0 md:col-start-2 md:row-start-2 lg:col-start-3 lg:row-start-1">
+            {wide && <Divider side="left" lit={foreign} label="Drag to change the width of the list" onSize={(x) => { const l = listRef.current?.getBoundingClientRect(); if (l) updateSettings({ listWidth: Math.round(Math.min(SIZE_LIMITS.listWidth.max, Math.max(SIZE_LIMITS.listWidth.min, (x - l.left) / rem()))) }); }} />}
+            <div className={STICKY}>{editor}</div></div>
+            : wide && !idleFull && <Overview notes={visible} filter={filter} archive={archive} onOpen={(nid) => go(nid)} />}
         </div>)}
       {keep && !pane && id && <Dialog title="Note" wide onClose={close}>{editor}</Dialog>}
       {editingTag && <TagDialog tag={editingTag} onClose={() => setEditingTag(null)} onDone={() => { const gone = editingTag.title === filter.tag; setEditingTag(null); void refreshMeta(); if (gone) go(id, { tag: undefined }); void load(); }} />}

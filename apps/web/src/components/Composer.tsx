@@ -30,6 +30,7 @@ export function Composer({ tag, autoFocus, onAdded }: { tag?: string; autoFocus?
   const draft = useRef({ title, text }); draft.current = { title, text };
   const pickingRef = useRef(false); pickingRef.current = picking;
   const sending = useRef(false);
+  const auto = useRef(false); // the title is the date the app put there (a long title moved into the description)
   const caret = useRef<number | null>(null); // after a long title moved into the description: where typing goes on
   useEffect(() => { if (caret.current !== null && textEl.current) { const c = caret.current; caret.current = null; textEl.current.focus(); textEl.current.setSelectionRange(c, c); } });
   const pressing = useRef(false);
@@ -53,8 +54,8 @@ export function Composer({ tag, autoFocus, onAdded }: { tag?: string; autoFocus?
     sending.current = true; setBusy(true);
     try {
       const tags = [...new Set([...(tag ? [tag] : []), ...extraTags])];
-      const n = await api.createNote({ title: t, text: body, tags, onList: tag ? false : keepOnList });
-      setTitle(''); setText(''); draft.current = { title: '', text: '' };
+      const n = await api.createNote({ title: t, text: body, tags, onList: tag ? false : keepOnList, autoTitle: auto.current && !!typedTitle });
+      auto.current = false; setTitle(''); setText(''); draft.current = { title: '', text: '' };
       void useStore.getState().refreshMeta(); pokeWidgets();
       markFresh(n.id); onAdded(n);
       return n;
@@ -70,7 +71,7 @@ export function Composer({ tag, autoFocus, onAdded }: { tag?: string; autoFocus?
       onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node) && !pickingRef.current && !pressing.current) void commit(); }}>
       <div className="flex items-center gap-2">
         <AutoText ref={titleEl} className="input !min-h-11 max-h-48 flex-1 resize-none !py-2.5 !text-base" aria-label="Add something" placeholder={tag ? `Add to ${tag.split('.').pop()}…` : 'Add something…'} value={title} autoFocus={autoFocus}
-          enterKeyHint="done" autoComplete="off" onChange={(e) => { const o = titleOverflow(e.target.value, text); if (o) { setTitle(o.title); setText(o.text); caret.current = o.caret; } else setTitle(e.target.value); }}
+          enterKeyHint="done" autoComplete="off" onChange={(e) => { const o = titleOverflow(e.target.value, text); if (o) { setTitle(o.title); setText(o.text); caret.current = o.caret; auto.current = true; } else { setTitle(e.target.value); auto.current = false; } }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void commit().then(() => titleEl.current?.focus()); } }} />
         <button type="button" tabIndex={-1} className="btn btn-accent !min-h-11 !px-3" aria-label="Add" title="Add (Enter)" disabled={busy || (!title.trim() && !text.trim())} onClick={() => void commit().then(() => titleEl.current?.focus())}><Plus size={18} /></button>
       </div>

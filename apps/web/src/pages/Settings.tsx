@@ -15,6 +15,8 @@ import { AccountCards } from '../components/AccountCard.tsx';
 import { api } from '../lib/api.ts';
 import { cn } from '../lib/cn.ts';
 import { useStore } from '../lib/store.ts';
+import type { CountTasks } from '../lib/settings.ts';
+import { SpeedSection } from '../components/SpeedSection.tsx';
 
 export function SettingsPage() {
   const { settings, updateSettings } = useStore();
@@ -41,6 +43,12 @@ export function SettingsPage() {
           <div className="space-y-1 text-sm"><span>Font</span><Select className="!w-56" aria-label="Font" value={settings.noteFont} onChange={(v) => updateSettings({ noteFont: v as 'sans' | 'mono' })} options={[{ value: 'sans', label: 'Proportional' }, { value: 'mono', label: 'Monospace' }]} /></div>
           <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-0.5" checked={settings.markdownSplit} onChange={(e) => updateSettings({ markdownSplit: e.target.checked })} /><span>Split view for Markdown items: the editor and the rendered text side by side. Off (the default): a Markdown item shows only its rendered text until you click into it, and again when you click away.</span></label>
         </Section>
+        <Section title="Tasks in tags">
+          <p className="text-sm text-muted">By default a tag lists only the notes you sent to it, not the tasks that carry it. Choose where tasks that carry a tag also count towards (and show under) that tag.</p>
+          <Select className="!w-64" aria-label="Tasks in tags" value={settings.countTasks} onChange={(v) => updateSettings({ countTasks: v as CountTasks })}
+            options={[{ value: 'never', label: 'Nowhere (only notes sent to the tag)' }, { value: 'home', label: 'Just Home' }, { value: 'archive', label: 'Just the Archive' }, { value: 'both', label: 'Home and the Archive' }]} />
+        </Section>
+        <SpeedSection />
         <TagManager />
         </>)}
 

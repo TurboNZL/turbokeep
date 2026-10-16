@@ -397,6 +397,47 @@ describe('tag looks, list excerpts, compression', () => {
     expect(await titles('"milk run"')).toEqual(['milk run']);
     expect(await titles('before:never')).toEqual([]); // a filter that makes no sense is a word nobody has
   });
+  it('a title the app made is remembered until you type one of your own', async () => {
+    const n = (await json('POST', '/api/notes', { title: 'Friday, 16 Oct 2026 at 09:05', text: 'long long', autoTitle: true })).body;
+    expect(n.autoTitle).toBe(true);
+    expect((await json('PATCH', `/api/notes/${n.id}`, { text: 'more text' })).body.autoTitle).toBe(true);
+    expect((await json('PATCH', `/api/notes/${n.id}`, { title: 'Mine' })).body.autoTitle).toBe(false);
+  });
+  it('tag counts can include the tasks that carry the tag (a setting of the page)', async () => {
+    await json('POST', '/api/notes', { title: 'task', tags: ['t'], onList: true }); await json('POST', '/api/notes', { title: 'note', tags: ['t'] });
+    expect((await json('GET', '/api/tags')).body[0].count).toBe(1);
+    expect((await json('GET', '/api/tags?tasks=1')).body[0].count).toBe(2);
+  });
+  it('exclude: and include: are -tag: and tag:', async () => {
+    await json('POST', '/api/notes', { title: 'a milk', tags: ['x'] }); await json('POST', '/api/notes', { title: 'b milk', tags: ['y'] });
+    const titles = async (q: string) => (await json('GET', `/api/notes?q=${encodeURIComponent(q)}`)).body.map((n: any) => n.title).sort();
+    expect(await titles('milk exclude:x')).toEqual(['b milk']);
+    expect(await titles('milk excludes:x')).toEqual(['b milk']);
+    expect(await titles('milk include:x')).toEqual(['a milk']);
+    expect(await titles('milk -exclude:x')).toEqual(['a milk']);
+  });
+  it('imported emoji: small PNG or WebP only, served with a long cache, used by a tag, kept by the backup', async () => {
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    expect((await json('POST', '/api/emoji', { name: 'x', data: Buffer.from('not a picture').toString('base64') })).status).toBe(400);
+    const e = (await json('POST', '/api/emoji', { name: 'blob', data: png })).body;
+    expect(e.id).toMatch(/^[0-9a-f]{12}$/);
+    const img = await app.request(`/api/emoji/${e.id}`, { headers: { cookie } });
+    expect(img.headers.get('content-type')).toBe('image/png');
+    expect(img.headers.get('cache-control')).toContain('immutable');
+    await json('POST', '/api/notes', { title: 'a', tags: ['t'] });
+    expect((await json('PATCH', '/api/tags', { title: 't', emoji: `:${e.id}:` })).status).toBe(200);
+    expect((await json('GET', '/api/tags')).body[0].emoji).toBe(`:${e.id}:`);
+    await json('PATCH', '/api/tags', { title: 't', emoji: ':000000000000:' }); // not yours: no emoji
+    expect((await json('GET', '/api/tags')).body[0].emoji).toBe('');
+    await json('PATCH', '/api/tags', { title: 't', emoji: `:${e.id}:` });
+    const zip = new Uint8Array(await (await app.request('/api/export/turbokeep', { headers: { cookie } })).arrayBuffer());
+    await json('DELETE', `/api/emoji/${e.id}`);
+    expect((await json('GET', '/api/tags')).body[0].emoji).toBe(''); // a tag does not keep a picture that is gone
+    expect((await json('GET', '/api/emoji')).body).toEqual([]);
+    await json('POST', '/api/import/turbokeep', upload('b.zip', zip)); // the backup brings the picture back, and the tag's look with it
+    expect((await json('GET', '/api/emoji')).body.map((x: any) => x.id)).toEqual([e.id]);
+    expect((await json('GET', '/api/tags')).body[0].emoji).toBe(`:${e.id}:`);
+  });
   it('renaming onto an existing tag keeps a look', async () => {
     await json('POST', '/api/notes', { title: 'a', tags: ['one'] }); await json('POST', '/api/notes', { title: 'b', tags: ['two'] });
     await json('PATCH', '/api/tags', { title: 'one', emoji: '1️⃣' });

@@ -31,7 +31,7 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
     c.header('X-Content-Type-Options', 'nosniff');
     c.header('Referrer-Policy', 'same-origin');
     c.header('X-Frame-Options', 'DENY');
-    if (c.req.path.startsWith('/api/')) c.header('Cache-Control', 'no-store');
+    if (c.req.path.startsWith('/api/') && !c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'no-store'); // an emoji picture sets its own
   });
 
   app.onError((e, c) => {
@@ -133,7 +133,20 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
   // drag and drop: {above, below} are the notes that should end up directly over and under it
   app.post('/api/notes/:id/move', async (c) => { const b = await body(c); return c.json(S.moveNote(db, uid(c), c.req.param('id'), typeof b.above === 'string' ? b.above : null, typeof b.below === 'string' ? b.below : null)); });
   app.delete('/api/notes/:id', (c) => { S.deleteNote(db, uid(c), c.req.param('id')); return c.json({ ok: true }); });
-  app.get('/api/tags', (c) => c.json(c.req.query('view') === 'all' ? S.listTagsEverywhere(db, uid(c)) : S.listTags(db, uid(c), c.req.query('view') === 'archived' ? 'archived' : 'live')));
+  // imported emoji: the page shrinks the picture to emoji size and sends it as base64; each one is served with a year-long cache header (its id never changes)
+  app.get('/api/emoji', (c) => c.json(S.listEmoji(db, uid(c))));
+  app.post('/api/emoji', async (c) => {
+    const b = await body(c);
+    if (typeof b.data !== 'string') throw new S.HttpError(400, 'Send {name, data} with the picture as base64');
+    return c.json(S.addEmoji(db, uid(c), b.name, new Uint8Array(Buffer.from(b.data, 'base64'))), 201);
+  });
+  app.get('/api/emoji/:id', (c) => {
+    const e = S.getEmoji(db, uid(c), c.req.param('id'));
+    if (!e) return c.json({ error: 'Emoji not found' }, 404);
+    return c.body(e.data as any, 200, { 'Content-Type': e.mime, 'Cache-Control': 'private, max-age=31536000, immutable' });
+  });
+  app.delete('/api/emoji/:id', (c) => { S.deleteEmoji(db, uid(c), c.req.param('id')); return c.json({ ok: true }); });
+  app.get('/api/tags', (c) => c.json(c.req.query('view') === 'all' ? S.listTagsEverywhere(db, uid(c)) : S.listTags(db, uid(c), c.req.query('view') === 'archived' ? 'archived' : 'live', c.req.query('tasks') === '1')));
   // {from, to} renames; {title, emoji, color} sets the tag's look (either may be sent, '' clears)
   app.patch('/api/tags', async (c) => {
     const b = await body(c);

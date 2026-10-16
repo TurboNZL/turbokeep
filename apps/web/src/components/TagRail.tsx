@@ -1,4 +1,5 @@
 import { CalendarClock, CheckSquare, FileText, Pencil, Tag } from 'lucide-react';
+import { Emoji } from '../lib/emoji.tsx';
 import { cn } from '../lib/cn.ts';
 import type { TagInfo } from '../lib/api.ts';
 import type { RailTag } from '../lib/tagTree.ts';
@@ -32,7 +33,7 @@ export function TagRail({ tags, filter, onScope, onTag, onEditTag, counts, archi
           <div key={t.title} className="group relative flex shrink-0 items-center lg:w-full">
             <button onClick={() => onTag(sel ? '' : t.title)} aria-current={sel || undefined} title={t.title} className={cn(chip, 'lg:pr-9', sel && 'bg-raised pr-7 font-medium text-accent')}
               style={t.color ? { boxShadow: `inset 4px 0 0 #${t.color}`, paddingLeft: '0.9rem' } : undefined}>
-              {t.emoji && <span aria-hidden>{t.emoji}</span>}
+              {t.emoji && <Emoji value={t.emoji} />}
               <span className="min-w-0 flex-1 truncate" style={{ paddingLeft: `${depth * 0.75}rem` }}>{t.title.split('.').pop()}</span><span className="text-xs text-muted">{t.total}</span>
             </button>
             <button className={cn('absolute right-1 rounded p-1.5 text-muted hover:text-fg', sel ? 'block' : 'hidden lg:group-hover:block lg:group-focus-within:block')} onClick={() => onEditTag(t)} aria-label={`Edit tag ${t.title}`} title="Emoji, colour, name"><Pencil size={13} /></button>
