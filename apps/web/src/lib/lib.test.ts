@@ -212,11 +212,12 @@ describe('the tags column', () => {
 describe('a title too long to be a title', () => {
   it('moves into the description, the note gets the date as its title, and typing goes on after the moved text', () => {
     expect(titleOverflow('x'.repeat(TITLE_MAX), '')).toBeNull();
-    const o = titleOverflow('y'.repeat(TITLE_MAX + 1), 'old text', new Date(2026, 9, 16, 9, 5))!;
+    const o = titleOverflow('y'.repeat(TITLE_MAX + 1), 'old text', null, new Date(2026, 9, 16, 9, 5))!;
     expect(o.title).toBe('Friday, 16 Oct 2026 at 09:05');
     expect(o.text).toBe(`${'y'.repeat(TITLE_MAX + 1)}\n\nold text`);
     expect(o.caret).toBe(TITLE_MAX + 1);
     expect(titleOverflow('z'.repeat(200), '')!.text).toBe('z'.repeat(200));
+    expect(titleOverflow('z'.repeat(200), '', 7)!.caret).toBe(7); // the cursor stays where it was in the title
   });
 });
 

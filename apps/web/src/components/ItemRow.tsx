@@ -52,6 +52,7 @@ export function ItemRow({ n, variant, active, finishing, drag, hideCheck, onOpen
   const own = writtenTitle(n);            // the title you wrote, if any
   const text = n.text.trim();
   const body = own ? text : '';           // the part shown below the title
+  const textLines = text.replace(/\r\n?/g, '\n').split('\n');
   const preview = own ? firstLine(text, markdown) : '', more = own && (hasMore(text) || n.text.length >= 400);
   const html = useMemo(() => (open && markdown ? renderMarkdown(text) : ''), [open, markdown, text]);
   const done = n.archived;
@@ -84,16 +85,17 @@ export function ItemRow({ n, variant, active, finishing, drag, hideCheck, onOpen
                 ? <span className={cn('tk-title min-w-0 flex-1 whitespace-pre-line break-words text-[0.95rem] font-semibold', done && 'task-done')}>{own}</span>
                 : open && markdown && text
                   ? <span className={cn('tk-title guide min-w-0 flex-1 text-[0.95rem]', done && 'task-done')} dangerouslySetInnerHTML={{ __html: html }} />
-                  : <span className={cn('tk-title min-w-0 flex-1 whitespace-pre-line break-words text-[0.95rem] font-semibold', !open && 'line-clamp-3', done && 'task-done')}>{text ? (markdown && !open ? text.split('\n').slice(0, 3).map((l) => firstLine(l, true)).join('\n') : text) : 'Untitled'}</span>}
-              {n.pinned && <Pin size={13} className="mt-1 shrink-0 text-accent" aria-label="Pinned" />}
+                  : <span className={cn('tk-title min-w-0 flex-1 whitespace-pre-line break-words text-[0.95rem] font-semibold', !open && 'line-clamp-3', done && 'task-done')}>{text ? (open ? text : textLines.slice(0, 3).map((l) => (markdown ? firstLine(l, true) : l)).join('\n')) : 'Untitled'}</span>}
             </span>
+            {!open && !own && text && (textLines.length > 3 || n.text.length >= 400) && <span aria-label="More text" className="block whitespace-pre text-[13px] leading-none text-muted">{'     …'}</span>}
             {!open && preview && <span className="mt-0.5 block truncate text-[13px] text-muted">{preview}</span>}
             {!open && preview && more && <span aria-label="More text" className="block whitespace-pre text-[13px] leading-none text-muted">{'     …'}</span>}
             {!open && meta}
           </button>
           <div className="relative h-[var(--tk-btn,2.75rem)] min-h-[3.25rem] w-[5.25rem] shrink-0 self-stretch" data-nohold>
-            <button type="button" className="absolute left-0 top-1/2 grid h-[var(--tk-btn,2.75rem)] w-[var(--tk-btn,2.75rem)] -translate-y-1/2 place-items-center rounded-full border border-line bg-raised/60 text-fg hover:border-accent hover:text-accent" onClick={onOpen} aria-label={`Edit ${titleOf(n)}`} title="Edit (or double-click the item)"><Pencil size={19} /></button>
-            <button type="button" className="absolute right-0 top-0.5 grid h-7 w-7 place-items-center rounded text-muted hover:text-fg" aria-haspopup="menu" aria-label={`More for ${titleOf(n)}`} title="More" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onMenu(r.right - 240 > 8 ? r.right - 240 : r.left, r.bottom + 4); }}>
+            {n.pinned && <Pin size={13} className="absolute right-[0.4rem] top-[2.1rem] text-accent" aria-label="Pinned" />}
+            <button type="button" tabIndex={active ? -1 : 0} aria-hidden={active || undefined} className={cn('absolute left-0 top-1/2 grid h-[var(--tk-btn,2.75rem)] w-[var(--tk-btn,2.75rem)] -translate-y-1/2 place-items-center rounded-full border border-line bg-raised/60 text-fg transition-opacity hover:border-accent hover:text-accent', active && 'pointer-events-none opacity-0')} onClick={onOpen} aria-label={`Edit ${titleOf(n)}`} title="Edit (or double-click the item)"><Pencil size={19} /></button>
+            <button type="button" tabIndex={active ? -1 : 0} aria-hidden={active || undefined} className={cn('absolute right-0 top-0.5 grid h-7 w-7 place-items-center rounded text-muted transition-opacity hover:text-fg', active && 'pointer-events-none opacity-0')} aria-haspopup="menu" aria-label={`More for ${titleOf(n)}`} title="More" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onMenu(r.right - 240 > 8 ? r.right - 240 : r.left, r.bottom + 4); }}>
               <MoreHorizontal size={17} />
             </button>
           </div>
