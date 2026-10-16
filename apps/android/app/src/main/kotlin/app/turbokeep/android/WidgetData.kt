@@ -15,7 +15,8 @@ import java.util.Locale
  * otherwise. Reading and sorting here use no Android classes beyond org.json, so they are covered by a plain unit test.
  */
 object WidgetData {
-    class Item(val id: String, val title: String, val text: String, val due: LocalDate?, val createdAt: String, val position: Double, val pinned: Boolean, val percent: Double, val tags: List<String> = emptyList())
+    /** `hasTitle`: the item has a title of its own (not missing, not only the date the app put there). Without one `title` is its text and an opened item shows just the text. */
+    class Item(val id: String, val title: String, val text: String, val due: LocalDate?, val createdAt: String, val position: Double, val pinned: Boolean, val percent: Double, val tags: List<String> = emptyList(), val hasTitle: Boolean = true)
 
     /** What a one-note widget shows: the title and the text; `rows` is what it lists (the title, then the lines of the text) so a long note scrolls. */
     class NoteView(val id: String, val title: String, val text: String)
@@ -31,10 +32,11 @@ object WidgetData {
             val n = a.optJSONObject(i) ?: continue
             if (n.optBoolean("archived") || n.optBoolean("trashed") || (requireOnList && !n.optBoolean("onList", true))) continue
             val text = n.optString("text")
-            val title = n.optString("title").trim().ifEmpty { text.trim().lineSequence().firstOrNull()?.take(80) ?: "" }.ifEmpty { "Untitled" }
+            val own = if (n.optBoolean("autoTitle")) "" else n.optString("title").trim()
             val due = n.optString("dueDate", "").ifEmpty { null }?.let { runCatching { Instant.parse(it).atZone(zone).toLocalDate() }.getOrNull() }
-            out.add(Item(n.getString("id"), title, if (n.optString("title").isBlank()) text.lineSequence().drop(1).joinToString("\n").trim() else text.trim(),
-                due, n.optString("createdAt"), n.optDouble("position", 0.0), n.optBoolean("pinned"), n.optDouble("percentDone", 0.0), tagsOf(n)))
+            // no title of its own (or only the date the app put there): the text is what it is called, and what an opened item shows
+            out.add(Item(n.getString("id"), own.ifEmpty { text.trim().ifEmpty { "Untitled" } }, text.trim(),
+                due, n.optString("createdAt"), n.optDouble("position", 0.0), n.optBoolean("pinned"), n.optDouble("percentDone", 0.0), tagsOf(n), own.isNotEmpty()))
         }
         return out
     }
@@ -55,8 +57,8 @@ object WidgetData {
         }
     }
 
-    /** "Today", "Tomorrow", "Overdue 3 Oct", "Fri 16 Oct" (and a progress figure when there is some) */
-    fun meta(item: Item, today: LocalDate = LocalDate.now()): Pair<String, Boolean> {
+    /** "Today", "Tomorrow", "Overdue 3 Oct", "Fri 16 Oct" (and a progress figure when there is some; the first tags only when the widget is set to show them) */
+    fun meta(item: Item, today: LocalDate = LocalDate.now(), showTags: Boolean = false): Pair<String, Boolean> {
         val d = item.due
         val parts = ArrayList<String>()
         var overdue = false
@@ -70,7 +72,7 @@ object WidgetData {
             })
         }
         if (item.percent > 0.0) parts.add("${Math.round(item.percent * 100)}%")
-        if (item.tags.isNotEmpty()) parts.add(item.tags.take(3).joinToString(" "))
+        if (showTags && item.tags.isNotEmpty()) parts.add(item.tags.take(3).joinToString(" "))
         return parts.joinToString(" · ") to overdue
     }
 

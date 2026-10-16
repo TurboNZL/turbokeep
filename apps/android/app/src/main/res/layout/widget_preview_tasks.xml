@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- what the widget picker shows for the list widget: a small, static picture of it (the real widget is drawn when it is added) -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:padding="4dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="3dp" android:background="@drawable/widget_item_bg" android:paddingStart="8dp" android:paddingTop="4dp" android:paddingEnd="8dp" android:paddingBottom="4dp" android:text="Pay rent" android:textColor="@color/widget_text" android:textSize="12sp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="3dp" android:background="@drawable/widget_item_bg" android:paddingStart="8dp" android:paddingTop="4dp" android:paddingEnd="8dp" android:paddingBottom="4dp" android:text="Book flights" android:textColor="@color/widget_text" android:textSize="12sp" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/widget_item_bg" android:paddingStart="8dp" android:paddingTop="4dp" android:paddingEnd="8dp" android:paddingBottom="4dp" android:text="Water plants" android:textColor="@color/widget_text" android:textSize="12sp" />
+    </LinearLayout>
+
+    <ImageView android:layout_width="22dp" android:layout_height="22dp" android:layout_gravity="top|end" android:background="@drawable/widget_fab_bg" android:padding="5dp" android:src="@drawable/ic_w_settings" />
+    <ImageView android:layout_width="22dp" android:layout_height="22dp" android:layout_gravity="bottom|end" android:background="@drawable/widget_fab_bg" android:padding="5dp" android:src="@drawable/ic_w_refresh" />
+</FrameLayout>

@@ -46,6 +46,7 @@
         <activity
             android:name=".WidgetSettingsActivity"
             android:exported="true"
+            android:taskAffinity="app.turbokeep.android.widget"
             android:excludeFromRecents="true"
             android:label="TurboKeep widget"
             android:theme="@style/Theme.TurboKeep.Dialog">
@@ -58,6 +59,7 @@
         <activity
             android:name=".NoteWidgetConfigActivity"
             android:exported="true"
+            android:taskAffinity="app.turbokeep.android.widget"
             android:excludeFromRecents="true"
             android:label="TurboKeep note"
             android:theme="@style/Theme.TurboKeep.Dialog">
@@ -70,6 +72,7 @@
         <activity
             android:name=".WidgetActionActivity"
             android:exported="false"
+            android:taskAffinity="app.turbokeep.android.widget"
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:theme="@style/Theme.TurboKeep.Trampoline" />

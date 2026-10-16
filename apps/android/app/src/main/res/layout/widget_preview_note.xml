@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:padding="8dp">
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingEnd="24dp" android:text="Shopping" android:textColor="@color/widget_text" android:textSize="14sp" android:textStyle="bold" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="Milk\nEggs\nBread" android:textColor="@color/widget_text" android:textSize="12sp" />
+    </LinearLayout>
+
+    <ImageView android:layout_width="22dp" android:layout_height="22dp" android:layout_gravity="top|end" android:background="@drawable/widget_fab_bg" android:padding="5dp" android:src="@drawable/ic_w_open" />
+    <ImageView android:layout_width="22dp" android:layout_height="22dp" android:layout_gravity="bottom|end" android:background="@drawable/widget_fab_bg" android:padding="5dp" android:src="@drawable/ic_w_refresh" />
+</FrameLayout>
