@@ -50,7 +50,7 @@ export const api = {
   moveNote: (id: string, above: string | null, below: string | null) => req<Note>('POST', `/api/notes/${id}/move`, { above, below }),
   deleteNote: (id: string) => req<unknown>('DELETE', `/api/notes/${id}`),
   emptyTrash: () => req<{ deleted: number }>('POST', '/api/notes/empty-trash'),
-  tags: () => req<TagInfo[]>('GET', '/api/tags'),
+  tags: (pile: 'live' | 'archived' = 'live') => req<TagInfo[]>('GET', pile === 'archived' ? '/api/tags?view=archived' : '/api/tags'),
   styleTag: (title: string, look: { emoji?: string; color?: string }) => req<unknown>('PATCH', '/api/tags', { title, ...look }),
   renameTag: (from: string, to: string) => req<unknown>('PATCH', '/api/tags', { from, to }),
   deleteTag: (title: string) => req<unknown>('DELETE', `/api/tags?title=${encodeURIComponent(title)}`),

@@ -9,6 +9,7 @@ import { copyNoteLink, excerpt, patchNote } from '../lib/actions.ts';
 import { linkedNotes } from '../lib/clip.ts';
 import { TagInput } from './TagInput.tsx';
 import { TagPicker } from './TagPicker.tsx';
+import { AutoText } from './AutoText.tsx';
 
 type Save = 'saved' | 'saving' | 'dirty' | 'offline' | 'conflict';
 type Meta = Pick<Note, 'pinned' | 'archived' | 'trashed' | 'onList' | 'dueDate' | 'percentDone' | 'tags'>;
@@ -132,9 +133,9 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
           </div>
         </div>)}
 
-      <input className="input !min-h-12 !text-lg font-semibold" aria-label="Title" placeholder="Title" value={title} readOnly={ro} onChange={(e) => { setTitle(e.target.value); typed({ title: e.target.value }); }} />
+      <AutoText className="input !min-h-12 resize-none !py-2.5 !text-lg font-semibold" aria-label="Title" placeholder="Title (Enter starts a new line)" value={title} readOnly={ro} onChange={(e) => { setTitle(e.target.value); typed({ title: e.target.value }); }} />
       <div className={cn('grid gap-3', showPreview && 'lg:grid-cols-2')}>
-        <textarea className={cn('input note-text min-h-[38vh] w-full resize-y', font)} aria-label="Description" placeholder="Description, notes, anything…" value={text} readOnly={ro} onChange={(e) => { setText(e.target.value); typed({ text: e.target.value }); }} />
+        <AutoText className={cn('input note-text min-h-[5.5rem] w-full resize-none', font)} rows={3} aria-label="Description" placeholder="Description, notes, anything…" value={text} readOnly={ro} onChange={(e) => { setText(e.target.value); typed({ text: e.target.value }); }} />
         {showPreview && <div className="guide card min-h-[12rem] overflow-auto p-4" aria-label="Preview" dangerouslySetInnerHTML={{ __html: html || '<p class="text-muted">Nothing to preview.</p>' }}
           onClick={(e) => { const a = (e.target as HTMLElement).closest('a'); const m = a && /\/home\/([0-9a-f-]{36})/i.exec(a.getAttribute('href') ?? ''); if (a && m && a.href.startsWith(location.origin)) { e.preventDefault(); onOpenNote(m[1]!.toLowerCase()); } }} />}
       </div>
@@ -155,7 +156,7 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
             <span className="w-10 text-right tabular-nums">{pct}%</span></label>}
           <div className="flex flex-wrap gap-2">
             <button type="button" className="btn !min-h-11" onClick={() => setPicking(true)}><Tags size={16} />Send to tags</button>
-            <label className="ml-auto flex items-center gap-2 text-xs text-muted"><input type="checkbox" checked={markdown} onChange={(e) => { const t = e.target.checked ? 'markdown' : 'plain-text'; setNoteType(t); typed({ noteType: t }, true); }} />Markdown</label>
+            <label className="ml-auto flex items-center gap-2 text-xs text-muted"><input type="checkbox" checked={markdown} onChange={(e) => { const t = e.target.checked ? 'markdown' : 'plain-text'; setNoteType(t); if (e.target.checked) setPreview(true); typed({ noteType: t }, true); }} />Markdown</label>
             {markdown && !settings.notePreview && <button className="btn btn-ghost !px-2 text-xs" aria-pressed={preview} onClick={() => setPreview(!preview)}><Eye size={14} />Preview</button>}
           </div>
         </div>)}

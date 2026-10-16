@@ -1,21 +1,22 @@
-import { CheckSquare, FileText, Pencil, Tag, Tags } from 'lucide-react';
+import { CalendarClock, CheckSquare, FileText, Pencil, Tag } from 'lucide-react';
 import { cn } from '../lib/cn.ts';
 import type { TagInfo } from '../lib/api.ts';
 import type { HomeFilter, Scope } from '../lib/views.ts';
 
 /**
- * The left column of Home: the Tasks list (what has a checkbox), every note, the notes without a tag, then your tags (with their emoji and colour).
+ * The left column of Home: the Tasks list (what has a checkbox), every note, what is due soon, then your tags (with their emoji and colour).
  * One click switches what Home shows. On a phone it lies down into a strip of chips above the list. A tag also matches the tags nested under it
  * ("work" shows "work.reports"). Its height stops above the dock, so the last tags can always be reached.
  */
-export function TagRail({ tags, filter, onScope, onTag, onEditTag, counts }: {
-  tags: TagInfo[]; filter: HomeFilter; onScope: (s: Scope) => void; onTag: (t: string) => void; onEditTag: (t: TagInfo) => void; counts: { list: number | null };
+export function TagRail({ tags, filter, onScope, onTag, onEditTag, counts, archive }: {
+  tags: TagInfo[]; filter: HomeFilter; /** the Archive: no "Due soon" (finished things are not due) */ archive?: boolean; onScope: (s: Scope) => void; onTag: (t: string) => void; onEditTag: (t: TagInfo) => void; counts: { list: number | null };
 }) {
   const chip = 'flex min-h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-theme px-2.5 py-1.5 text-left text-sm hover:bg-raised max-lg:border max-lg:border-line max-lg:py-1 lg:w-full';
   const on = (s: Scope) => !filter.tag && filter.scope === s;
-  const scopes: { id: Scope; label: string; icon: typeof Tag; n?: number | null }[] = [
-    { id: 'list', label: 'Tasks', icon: CheckSquare, n: counts.list }, { id: 'all', label: 'All notes', icon: FileText }, { id: 'untagged', label: 'No tag', icon: Tags },
+  const every: { id: Scope; label: string; icon: typeof Tag; n?: number | null }[] = [
+    { id: 'list', label: 'Tasks', icon: CheckSquare, n: counts.list }, { id: 'all', label: 'All notes', icon: FileText }, { id: 'due', label: 'Due soon', icon: CalendarClock },
   ];
+  const scopes = every.filter((s) => !(archive && s.id === 'due'));
   return (
     <nav aria-label="Tasks and tags" className="flex min-w-0 gap-1.5 overflow-x-auto pb-1 lg:sticky lg:top-20 lg:flex-col lg:gap-0.5 lg:self-start lg:overflow-y-auto lg:overflow-x-hidden lg:pb-0"
       style={{ maxHeight: 'calc(100dvh - 6.5rem - var(--dock-h, 0px))' }}>
@@ -36,7 +37,7 @@ export function TagRail({ tags, filter, onScope, onTag, onEditTag, counts }: {
             <button className={cn('absolute right-1 rounded p-1.5 text-muted hover:text-fg', sel ? 'block' : 'hidden lg:group-hover:block lg:group-focus-within:block')} onClick={() => onEditTag(t)} aria-label={`Edit tag ${t.title}`} title="Emoji, colour, name"><Pencil size={13} /></button>
           </div>);
       })}
-      {!tags.length && <p className="hidden px-2.5 text-xs text-muted lg:block">Tags you give to items show up here.</p>}
+      {!tags.length && <p className="hidden px-2.5 text-xs text-muted lg:block">{archive ? 'Nothing archived is filed under a tag.' : 'Notes you send to tags show up here.'}</p>}
     </nav>
   );
 }

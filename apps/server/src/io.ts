@@ -67,7 +67,7 @@ export function exportVikunja(db: DB, user: { id: number; username: string }): {
   const rows = all(db, 'select * from notes where user_id = ? and trashed = 0 and on_list = 1 order by archived, position, created_at', user.id);
   const notListed = Number(get(db, 'select count(*) c from notes where user_id = ? and trashed = 0 and on_list = 0', user.id)!.c);
   const tasks: VTask[] = rows.map((n, i) => ({
-    id: i + 1, index: i + 1, title: n.title || n.text.split('\n')[0]?.slice(0, 120) || 'Untitled', description: n.title ? n.text : n.text.split('\n').slice(1).join('\n').trim(),
+    id: i + 1, index: i + 1, title: (n.title || n.text.split('\n')[0]?.slice(0, 120) || 'Untitled').replace(/\s*\n\s*/g, ' '), // Vikunja titles are one line description: n.title ? n.text : n.text.split('\n').slice(1).join('\n').trim(),
     done: !!n.archived, doneAt: n.archived ? n.updated_at : null, dueDate: n.due_date, percentDone: n.percent_done, isFavorite: !!n.pinned, position: n.position,
     created: n.created_at, updated: n.updated_at, labels: labels.get(n.id) ?? [],
   }));

@@ -98,3 +98,10 @@ export function renderMarkdown(src: string): string {
   }
   return out.join('\n');
 }
+
+/** The first line with something in it, with the Markdown marks taken off (headings, quotes, list bullets, bold, links): what a one-line preview shows for a Markdown note. */
+export function firstLine(src: string, markdown: boolean): string {
+  const line = src.replace(/\r\n?/g, '\n').split('\n').find((l) => l.trim() && !/^\s*(```|~~~|---+|\*\*\*+|___+)\s*$/.test(l)) ?? '';
+  if (!markdown) return line.trim();
+  return line.trim().replace(/^(#{1,6}\s+|>\s*|[-*+]\s+(\[[ xX]\]\s+)?|\d+[.)]\s+)+/, '').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/(\*\*|__|\*|_|`|~~)/g, '').trim();
+}

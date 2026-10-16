@@ -31,6 +31,8 @@ function ensure(s: DeviceSettings): TurboThemes {
 export function applyAppearance(s: DeviceSettings) {
   ensure(s).apply(s as Appearance);
   document.documentElement.dataset.layout = isLayout(s.layout) ? s.layout : 'side'; // layouts are this app's, not the themes'
+  const st = document.documentElement.style; // the sizes of Home's divisions (Settings > Appearance), read by Home's grid and the Keep wall
+  st.setProperty('--rail-w', `${s.railWidth}rem`); st.setProperty('--list-w', `${s.listWidth}rem`); st.setProperty('--card-w', `${s.cardWidth}rem`);
 }
 
 /** The running engine (start-up, update checks). Only valid after applyAppearance ran once. */

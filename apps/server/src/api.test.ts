@@ -341,6 +341,23 @@ describe('tag looks, list excerpts, compression', () => {
     await json('PATCH', `/api/notes/${n.id}`, { tags: ['x'] }); await json('PATCH', `/api/notes/${n.id}`, { tags: [] });
     expect((await json('GET', '/api/tags')).body).toEqual([]); // plain: removed with its last note
   });
+  it('a tag counts only what was sent to tags: a task that carries the tag does not, and the archive has its own counts', async () => {
+    await json('POST', '/api/notes', { title: 'filed', tags: ['t'], onList: false });
+    await json('POST', '/api/notes', { title: 'task', tags: ['t'], onList: true });
+    const old = (await json('POST', '/api/notes', { title: 'old', tags: ['t'], onList: false, archived: true })).body;
+    expect((await json('GET', '/api/tags')).body).toEqual([{ title: 't', emoji: '', color: '', count: 1 }]);
+    expect((await json('GET', '/api/tags?view=archived')).body).toEqual([{ title: 't', emoji: '', color: '', count: 1 }]);
+    expect((await json('GET', '/api/notes?tag=t&list=0')).body.map((n: any) => n.title)).toEqual(['filed']);
+    await json('PATCH', `/api/notes/${old.id}`, { archived: false });
+    expect((await json('GET', '/api/tags?view=archived')).body).toEqual([{ title: 't', emoji: '', color: '', count: 0 }]);
+  });
+  it('the archive is in your own order, like Home (the bin shows the latest change first)', async () => {
+    const a = (await json('POST', '/api/notes', { title: 'a', onList: true, archived: true })).body, b = (await json('POST', '/api/notes', { title: 'b', onList: true, archived: true })).body;
+    await json('POST', `/api/notes/${a.id}/move`, { above: null, below: b.id }); // a above b... b was newest (top); move a to the very top
+    expect((await json('GET', '/api/notes?view=archived')).body.map((n: any) => n.title)).toEqual(['a', 'b']);
+    await json('POST', `/api/notes/${b.id}/move`, { above: null, below: a.id });
+    expect((await json('GET', '/api/notes?view=archived')).body.map((n: any) => n.title)).toEqual(['b', 'a']);
+  });
   it('renaming onto an existing tag keeps a look', async () => {
     await json('POST', '/api/notes', { title: 'a', tags: ['one'] }); await json('POST', '/api/notes', { title: 'b', tags: ['two'] });
     await json('PATCH', '/api/tags', { title: 'one', emoji: '1️⃣' });

@@ -7,6 +7,7 @@ import { cn } from '../lib/cn.ts';
 import { clearCustomWallpaper, deviceLook, effectiveUi, getCustomImage, isUiStyle, listStyles, listThemes, resolveTheme, saveCustomWallpaper, themeStyle, themeWallpaper } from 'turbothemes';
 import { useCatalog } from '../lib/useCatalog.ts';
 import { LAYOUTS } from '../lib/layout.ts';
+import { DEFAULT_SETTINGS, SIZE_LIMITS, type DeviceSettings } from '../lib/settings.ts';
 import { ThemeUpdates } from './ThemeUpdates.tsx';
 
 type ThemeId = string;
@@ -218,6 +219,32 @@ export function AppearancePreview() {
   );
 }
 
+const SIZES: { key: 'railWidth' | 'listWidth' | 'cardWidth'; label: string; hint: string }[] = [
+  { key: 'railWidth', label: 'Tags column', hint: 'Tasks, All notes, Due soon and your tags, on the left of Home and the Archive.' },
+  { key: 'listWidth', label: 'List of items', hint: 'The column of items next to the open note (the most it grows to).' },
+  { key: 'cardWidth', label: 'Keep card', hint: 'How wide a card of the Google Keep wall is at least: narrower cards fit more columns.' },
+];
+
+/** The sizes of the divisions of Home (the tags column, the list, a Keep card): sliders, saved on this device. The note on the right simply takes what is left. */
+export function DivisionSizeSection() {
+  const { settings, updateSettings } = useStore();
+  const changed = SIZES.some((x) => settings[x.key] !== DEFAULT_SETTINGS[x.key]);
+  return (
+    <Section title="Size of the divisions">
+      <p className="text-sm text-muted">Make the columns of Home and the Archive wider or narrower to suit you. The open note takes the rest. Saved on this device.</p>
+      {SIZES.map(({ key, label, hint }) => {
+        const l = SIZE_LIMITS[key], v = settings[key];
+        return (
+          <label key={key} className="block text-sm"><span className="mb-1 flex justify-between"><span className="font-medium">{label}</span><span className="tabular-nums text-muted">{v} rem</span></span>
+            <input type="range" min={l.min} max={l.max} step={l.step} className="bt-range bt-hit w-full" style={{ '--p': `${((v - l.min) / (l.max - l.min)) * 100}%` } as React.CSSProperties} value={v}
+              onChange={(e) => updateSettings({ [key]: Number(e.target.value) } as Partial<DeviceSettings>)} aria-label={`${label} width`} />
+            <span className="text-xs text-muted">{hint}</span></label>);
+      })}
+      <button type="button" className="btn text-xs" disabled={!changed} onClick={() => updateSettings({ railWidth: DEFAULT_SETTINGS.railWidth, listWidth: DEFAULT_SETTINGS.listWidth, cardWidth: DEFAULT_SETTINGS.cardWidth })}>Back to the usual sizes</button>
+    </Section>
+  );
+}
+
 /** Google Keep view: Home shows the notes as a wall of cards instead of a list with the editor beside it. Right below the layouts. */
 export function KeepViewSection() {
   const { settings, updateSettings } = useStore();
@@ -233,7 +260,7 @@ export function KeepViewSection() {
 export function AppearanceLayout() {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
-      <div className="min-w-0 space-y-5"><LayoutSection /><KeepViewSection /><ColourThemeSection /><UiStyleSection /><ThemeUpdates /></div>
+      <div className="min-w-0 space-y-5"><LayoutSection /><DivisionSizeSection /><KeepViewSection /><ColourThemeSection /><UiStyleSection /><ThemeUpdates /></div>
       <AppearancePreview />
     </div>
   );

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { renderMarkdown } from './markdown.ts';
+import { describe, expect, it, vi } from 'vitest';
+import { firstLine, renderMarkdown } from './markdown.ts';
 import { fmtDay, fromLocalInput, isOverdue, toLocalInput } from './dates.ts';
 
 describe('markdown preview (notes are untrusted text)', () => {
@@ -20,6 +20,8 @@ describe('dates', () => {
     expect(fmtDay(new Date(2026, 9, 13).toISOString(), now)).toBe('Today');
     expect(fmtDay(new Date(2026, 9, 14).toISOString(), now)).toBe('Tomorrow');
     expect(fmtDay(new Date(2026, 9, 12).toISOString(), now)).toBe('Yesterday');
+    expect(fmtDay(new Date(2026, 9, 14, 12, 0).toISOString(), now)).toBe('Tomorrow'); // a date picked without a time is stored at noon
+    expect(fmtDay(new Date(2026, 9, 14, 15, 30).toISOString(), now)).toMatch(/^Tomorrow \d/);
     expect(fmtDay(null, now)).toBe('');
   });
   it('overdue only while open', () => {
@@ -35,8 +37,8 @@ describe('dates', () => {
   });
 });
 
-import { canReorder, compareManual, filterFromSearch, homeLink, matchesFilter, positionBetween, sortNotes, viewParams } from './views.ts';
-import { cleanNavOrder } from './settings.ts';
+import { canReorder, compareManual, dueSoon, filterFromSearch, homeLink, matchesFilter, positionBetween, sortKey, sortNotes, viewParams } from './views.ts';
+import { cleanNavOrder, DEFAULT_SETTINGS, loadSettings } from './settings.ts';
 import { linkedNotes } from './clip.ts';
 import { looksOf, stripe } from './tagLook.ts';
 import type { Note } from './api.ts';
@@ -48,15 +50,19 @@ describe('the filter, the address and what belongs in a list', () => {
     expect(filterFromSearch(new URLSearchParams('scope=all&tag=home&q=x'))).toEqual({ scope: 'all', tag: 'home', q: 'x' });
     expect(filterFromSearch(new URLSearchParams('scope=bogus')).scope).toBe('list');
     expect(viewParams({ scope: 'list' })).toEqual({ excerpt: '1', list: '1' });
-    expect(viewParams({ scope: 'untagged' })).toEqual({ excerpt: '1', untagged: '1' });
+    expect(viewParams({ scope: 'due' })).toEqual({ excerpt: '1', due: 'any' });
+    expect(viewParams({ scope: 'list' }, true)).toEqual({ excerpt: '1', view: 'archived', list: '1' });
     expect(viewParams({ scope: 'all' })).toEqual({ excerpt: '1' });
-    expect(viewParams({ scope: 'list', tag: 'home' })).toEqual({ excerpt: '1', tag: 'home' }); // a tag shows its notes whether or not they are on the list
+    expect(viewParams({ scope: 'list', tag: 'home' })).toEqual({ excerpt: '1', tag: 'home', list: '0' }); // a tag shows what was sent to tags, not the tasks that carry it
+    expect(viewParams({ scope: 'all', tag: 'home' }, true)).toEqual({ excerpt: '1', view: 'archived', tag: 'home', list: '0' });
     expect(viewParams({ scope: 'list', q: 'milk' })).toEqual({ excerpt: '1', view: 'kept', q: 'milk' }); // a search also looks through the archive
   });
   it('links keep the open note and drop defaults', () => {
     expect(homeLink(null)).toBe('/home');
     expect(homeLink('abc', { scope: 'all' })).toBe('/home/abc?scope=all');
-    expect(homeLink(null, { scope: 'untagged', tag: 'work' })).toBe('/home?tag=work');
+    expect(homeLink(null, { scope: 'due', tag: 'work' })).toBe('/home?tag=work');
+    expect(homeLink('abc', { scope: 'due' }, '/archive')).toBe('/archive/abc?scope=due');
+    expect(filterFromSearch(new URLSearchParams('scope=untagged')).scope).toBe('list'); // an old address still opens something
   });
   it('knows what belongs in each list (so a change shows at once, without asking the server)', () => {
     const task = note('t'), filed = note('f', { onList: false, tags: ['work.reports'] }), done = note('d', { archived: true }), gone = note('g', { trashed: true });
@@ -65,8 +71,13 @@ describe('the filter, the address and what belongs in a list', () => {
     expect(matchesFilter(filed, { scope: 'all' })).toBe(true);
     expect(matchesFilter(filed, { scope: 'list', tag: 'work' })).toBe(true); // sub-tags count
     expect(matchesFilter(filed, { scope: 'list', tag: 'wor' })).toBe(false);
-    expect(matchesFilter(task, { scope: 'untagged' })).toBe(true);
-    expect(matchesFilter(filed, { scope: 'untagged' })).toBe(false);
+    const tagged = note('x', { tags: ['work'] }); // a task with a tag: still a task, not under the tag until it is sent there
+    expect(matchesFilter(tagged, { scope: 'list' })).toBe(true);
+    expect(matchesFilter(tagged, { scope: 'list', tag: 'work' })).toBe(false);
+    expect(matchesFilter(note('due', { dueDate: '2026-02-01T12:00:00Z' }), { scope: 'due' })).toBe(true);
+    expect(matchesFilter(task, { scope: 'due' })).toBe(false);
+    expect(matchesFilter(done, { scope: 'all' }, true)).toBe(true); // the archive shows the archived ones, and only those
+    expect(matchesFilter(task, { scope: 'all' }, true)).toBe(false);
     expect(matchesFilter(done, { scope: 'all' })).toBe(false); // finished = archived: out of the live lists
     expect(matchesFilter(done, { scope: 'list', q: 'x' })).toBe(true); // but a search keeps what the server found
     expect(matchesFilter(gone, { scope: 'all', q: 'x' })).toBe(false);
@@ -96,6 +107,54 @@ describe('ordering', () => {
     expect(positionBetween(undefined, 5)).toBe(4);
     expect(positionBetween(5, undefined)).toBe(6);
     expect(positionBetween(1, 1 + 1e-9)).toBeNull(); // too close: the server renumbers
+  });
+});
+
+describe('due soon', () => {
+  const now = new Date(2026, 9, 16, 9, 0); // Fri 16 Oct 2026, 9:00
+  const due = (name: string, days: number, o: Partial<Note> = {}) => note(name, { dueDate: new Date(2026, 9, 16 + days, 12, 0).toISOString(), ...o });
+  const names = (l: Note[]) => l.map((n) => n.title);
+  it('five things, and more when the fifth falls inside a time frame: the rest of that frame comes with it', () => {
+    const l = [due('a', 0), due('b', 1), due('c', 2), due('d', 3), due('e', 4), due('f', 5), due('g', 7), due('h', 8)];
+    expect(names(dueSoon(l, now))).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g']); // the fifth is in 4 days: the frame is a week, so everything up to 7 days
+    expect(names(dueSoon([due('a', 0), due('b', 0), due('c', 1), due('d', 1), due('e', 1), due('f', 2)], now))).toEqual(['a', 'b', 'c', 'd', 'e']); // the fifth is tomorrow: 1 day frame ends there
+  });
+  it('the next frames are a month and three months', () => {
+    expect(names(dueSoon([...'abcde'].map((x, i) => due(x, 10 + i)), now)).length).toBe(5);
+    expect(names(dueSoon([...[...'abcde'].map((x, i) => due(x, 10 + i)), due('f', 31), due('g', 32)], now))).toEqual(['a', 'b', 'c', 'd', 'e', 'f']); // 16 Oct + 1 month = 16 Nov = day 31: the 5th (day 14) is in that month, so everything up to 16 Nov
+    expect(names(dueSoon([...[...'abcde'].map((x, i) => due(x, 40 + i)), due('f', 80), due('g', 100)], now))).toEqual(['a', 'b', 'c', 'd', 'e', 'f']); // inside 3 months: up to 16 Jan
+    expect(names(dueSoon([...[...'abcde'].map((x, i) => due(x, 200 + i)), due('h', 300)], now))).toEqual(['a', 'b', 'c', 'd', 'e']); // beyond 3 months: just the five
+    expect(dueSoon([...'abcdef'].map((x) => due(x, 200)), now).length).toBe(6); // ...and whatever else falls on the fifth's own day
+  });
+  it('overdue ones come first and do not use up the five; fewer than five show all; no date, no entry', () => {
+    const l = [due('late', -3), due('later', -1), due('a', 0), due('b', 3), note('none'), due('c', 200)];
+    expect(names(dueSoon(l, now))).toEqual(['late', 'later', 'a', 'b', 'c']);
+    expect(names(dueSoon([], now))).toEqual([]);
+  });
+});
+
+describe('sort per page', () => {
+  it('each page and tab has its own key', () => {
+    expect(sortKey({ scope: 'list' }, false)).toBe('list');
+    expect(sortKey({ scope: 'all', tag: 'work.reports' }, false)).toBe('tag:work.reports');
+    expect(sortKey({ scope: 'all' }, true)).toBe('archive:all');
+    expect(sortKey({ scope: 'all', q: 'x' }, false)).toBe('search');
+  });
+  it('a saved choice is read back repaired (a stranger in storage or a missing width never breaks the page)', () => {
+    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ sorts: { list: 'title', all: 'bogus' }, railWidth: 99, listWidth: 'x' }), setItem: () => {} });
+    const s = loadSettings();
+    expect(s.sorts).toEqual({ list: 'title' });
+    expect(s.railWidth).toBe(22); expect(s.listWidth).toBe(DEFAULT_SETTINGS.listWidth);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('the one-line preview', () => {
+  it('shows the first line of a description, without Markdown marks when the note is Markdown', () => {
+    expect(firstLine('\n\nfirst\nsecond', false)).toBe('first');
+    expect(firstLine('## **Plan** the [trip](http://x.y)\n- a', true)).toBe('Plan the trip');
+    expect(firstLine('- [ ] buy `milk`', true)).toBe('buy milk');
+    expect(firstLine('# not markdown', false)).toBe('# not markdown');
   });
 });
 
