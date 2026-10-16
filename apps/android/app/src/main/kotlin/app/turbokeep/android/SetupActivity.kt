@@ -37,6 +37,7 @@ class SetupActivity : AppCompatActivity() {
         var pairedToken = ""
         val message = TextView(this).apply { setTextColor(0xFFFF6B5E.toInt()); setPadding(0, px(10), 0, 0) }
         val connect = Button(this).apply { text = "Connect" }
+        var forced = "" // the address, id and secret the check failed for: pressing Connect again with the same ones saves them anyway
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(px(22), px(22), px(22), px(22))
@@ -73,20 +74,26 @@ class SetupActivity : AppCompatActivity() {
             if (!address.startsWith("http://") && !address.startsWith("https://")) address = "https://$address"
             message.setTextColor(0xFF9A9AA5.toInt()); message.text = "Checking…"; connect.isEnabled = false
             val id = cfId.text.toString().trim(); val secret = cfSecret.text.toString().trim()
+            // TurboMusic does not gate saving on a check: it saves what you typed and lets the real requests show whether it works. The check here only advises:
+            // when it fails, the next press of the button (now "Connect anyway") saves the same address and token and opens the page.
+            fun save() {
+                // a different server means the old token is no good
+                if (prefs.serverUrl != address) prefs.token = ""
+                prefs.serverUrl = address; prefs.cfId = id; prefs.cfSecret = secret
+                if (pairedToken.isNotEmpty()) prefs.token = pairedToken // from a pairing code: the widget can talk to the server at once
+                setResult(Activity.RESULT_OK); finish()
+            }
+            if (forced == address + "|" + id + "|" + secret) { save(); return@setOnClickListener }
             Thread {
                 val problem = KeepApi.probe(address, id, secret)
                 Handler(Looper.getMainLooper()).post {
                     connect.isEnabled = true
                     if (problem != null) {
+                        forced = address + "|" + id + "|" + secret
+                        connect.text = "Connect anyway"
                         message.setTextColor(0xFFFF6B5E.toInt())
-                        message.text = problem
-                    } else {
-                        // a different server means the old token is no good
-                        if (prefs.serverUrl != address) prefs.token = ""
-                        prefs.serverUrl = address; prefs.cfId = id; prefs.cfSecret = secret
-                        if (pairedToken.isNotEmpty()) prefs.token = pairedToken // from a pairing code: the widget can talk to the server at once
-                        setResult(Activity.RESULT_OK); finish()
-                    }
+                        message.text = problem + "\n\nThe check can be wrong. Press Connect anyway to use these settings: the app's page will show whether it works."
+                    } else save()
                 }
             }.start()
         }
