@@ -3,6 +3,7 @@ export interface AndroidBridge {
   info(): string;
   saveToken(token: string): void;
   hasToken(): boolean;
+  accessHeaders(): string;
   refreshWidgets(): void;
   changeServer(): void;
   openWidgetSettings(): void;
@@ -15,6 +16,13 @@ export interface UpdateState { status: 'idle' | 'checking' | 'downloading' | 're
 export interface AndroidInfo { version: string; serverUrl: string; hasToken: boolean; hasUpdateToken: boolean; update: UpdateState }
 
 export const android = (): AndroidBridge | null => (window as unknown as { TurboKeepAndroid?: AndroidBridge }).TurboKeepAndroid ?? null;
+/** the Cloudflare Access service token's headers when the Android app holds one (every request of the page must carry them behind Access); {} elsewhere */
+let access: Record<string, string> | null = null;
+export const accessHeaders = (): Record<string, string> => {
+  if (access) return access;
+  try { const b = android(); access = b?.accessHeaders ? (JSON.parse(b.accessHeaders()) as Record<string, string>) : {}; } catch { access = {}; }
+  return access;
+};
 export const androidInfo = (): AndroidInfo | null => { try { const b = android(); return b ? (JSON.parse(b.info()) as AndroidInfo) : null; } catch { return null; } };
 
 /** Hands a file to the app, which saves it into Downloads (a blob link cannot be downloaded in a web view). */

@@ -1,5 +1,5 @@
 /** The server's JSON API. Same origin, relative URLs and the session cookie, so it works behind any proxy or Cloudflare tunnel with no setup. */
-import { android, saveWithApp } from './native.ts';
+import { accessHeaders, android, saveWithApp } from './native.ts';
 export class ApiError extends Error {
   constructor(public status: number, message: string, public body?: any) { super(message); }
 }
@@ -13,7 +13,7 @@ const created = (id: string) => makes.get(id)?.done ?? Promise.resolve();
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, { method, credentials: 'same-origin', headers: body !== undefined && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : undefined, body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body) });
+    res = await fetch(path, { method, credentials: 'same-origin', headers: { ...accessHeaders(), ...(body !== undefined && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}) }, body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body) });
   } catch { throw new ApiError(0, 'Cannot reach the server'); }
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, data?.error ?? `Server said ${res.status}`, data);
@@ -92,7 +92,7 @@ export const api = {
 
 /** Saves a file the server generates (the export zips). A plain link would also work, but this reports errors in the page. */
 export async function download(path: string, fallbackName: string): Promise<{ notExported: number }> {
-  const res = await fetch(path, { credentials: 'same-origin' });
+  const res = await fetch(path, { credentials: 'same-origin', headers: accessHeaders() });
   if (!res.ok) throw new ApiError(res.status, (await res.json().catch(() => null))?.error ?? `Server said ${res.status}`);
   const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallbackName;
   saveBlob(await res.blob(), name);

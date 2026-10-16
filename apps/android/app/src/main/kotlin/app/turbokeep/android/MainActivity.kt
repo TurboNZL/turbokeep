@@ -11,6 +11,7 @@ import android.webkit.JsResult
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -71,7 +72,10 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptCookie(true)
         web.addJavascriptInterface(TurboKeepBridge(this) { startSetup() }, "TurboKeepAndroid")
 
+        val accessProxy = AccessProxy(ServerPrefs(this))
         web.webViewClient = object : WebViewClient() {
+            // behind Cloudflare Access the page's own GET requests get the service token here (see AccessProxy); without a token nothing changes
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? = accessProxy.handle(request)
             // Everything stays in the app (a Cloudflare Access sign-in hops between several addresses); only links that are not web pages go out
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val scheme = request.url.scheme ?: return false

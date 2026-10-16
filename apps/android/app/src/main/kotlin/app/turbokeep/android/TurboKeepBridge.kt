@@ -26,6 +26,8 @@ class TurboKeepBridge(private val context: Context, private val changeServer: ()
 
     /** the page signed in and made an API token for this phone: the widget and quick add use it */
     @JavascriptInterface fun saveToken(token: String) { prefs.token = token; TasksWidgetProvider.refreshAll(context) }
+    /** the Cloudflare Access service token's headers as a JSON object ({} when there is none): the page adds them to the requests it makes itself (those with a body cannot be seen by the app) */
+    @JavascriptInterface fun accessHeaders(): String = JSONObject(prefs.accessHeaders()).toString()
     @JavascriptInterface fun hasToken(): Boolean = prefs.token.isNotEmpty()
     @JavascriptInterface fun refreshWidgets() { TasksWidgetProvider.refreshAll(context) }
     /** Settings > This app > Android app: the widget's settings window, opened from the page (it has no widget to belong to, so it holds the shared choices: text size, spacing, buttons, order) */
