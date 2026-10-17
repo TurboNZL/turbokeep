@@ -1,5 +1,6 @@
 import { api, type Note, type TagInfo } from './api.ts';
 import { filterFromSearch, viewParams } from './views.ts';
+import { early } from './early.ts';
 
 /**
  * Starts the requests Home needs at the same moment as the "who am I" check, instead of after it (and after the page code): on a slow link that is
@@ -11,10 +12,14 @@ let held: Prefetched | null = null;
 
 export const notesKey = (params: object) => JSON.stringify(params);
 
+/** the plain Home list, as index.html asks for it */
+const DEFAULT_NOTES = JSON.stringify({ excerpt: '1', list: '1' });
+
 export function startPrefetch() {
   if (!/^\/(home|$)/.test(location.pathname)) return;
   const params = viewParams(filterFromSearch(new URLSearchParams(location.search)));
-  const p: Prefetched = { key: notesKey(params), notes: api.notes(params), tags: api.tags() };
+  const e = early();
+  const p: Prefetched = { key: notesKey(params), notes: (notesKey(params) === DEFAULT_NOTES && (e?.notes as Promise<Note[]> | undefined)) || api.notes(params), tags: (e?.tags as Promise<TagInfo[]> | undefined) || api.tags() };
   for (const x of [p.notes, p.tags]) x.catch(() => {});
   held = p;
 }

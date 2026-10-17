@@ -25,5 +25,7 @@
       "type": "image/svg+xml",
       "purpose": "any"
     }
-  ]
+  ],
+  "id": "/",
+  "scope": "/"
 }

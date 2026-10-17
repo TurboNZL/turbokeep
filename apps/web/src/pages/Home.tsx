@@ -17,6 +17,7 @@ import { useItemUi } from '../lib/useItemUi.tsx';
 import { Select } from '../components/Select.tsx';
 import { TagDialog } from '../components/TagDialog.tsx';
 import { NoteEditor } from '../components/NoteEditor.tsx';
+import { editorFocusPending } from '../lib/focus.ts';
 import { Composer } from '../components/Composer.tsx';
 import { ItemRow, titleOf } from '../components/ItemRow.tsx';
 import { Sortable, SortableList } from '../components/SortableList.tsx';
@@ -54,6 +55,7 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   const params = viewParams(filter, archive, withTasks), key = notesKey(params);
   const [error, setError] = useState('');
   const [editingTag, setEditingTag] = useState<TagInfo | null>(null);
+  const [showAllTags, setShowAllTags] = useState(false); // temporary on purpose: not kept in the settings
   const [loaded, setLoaded] = useState(memo.has(key));
   const shown = useRef('');
 
@@ -171,20 +173,21 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
       {loaded && !visible.length && !error && (
         <p className="py-8 text-center text-sm text-muted">{filter.q ? 'Nothing matches.' : archive ? 'Nothing archived here.' : filter.tag ? 'Nothing under this tag yet. Send a note to it.' : filter.scope === 'list' ? 'Your list is empty. Type something above.' : filter.scope === 'due' ? 'Nothing has a date yet.' : 'Nothing here.'}</p>)}
       {draggable && <p className="text-center text-xs text-muted">Drag to reorder. On a touch screen, drag the grip. Tap an item to read it, the pencil to edit it. Right-click or hold for more.</p>}
+      {!filter.q && !archive && !soon && <div className="h-28 md:hidden" aria-hidden />}
     </section>
   );
 
   const send = sp.get('send') === '1'; // the widget's "Save to memory": the item opens with the tag picker ready
   const editor = id && <NoteEditor key={id} id={id} startPicking={send} onPicked={() => nav(homeLink(id, filter, base), { replace: true })} onBack={close} onGone={() => { setOpenNote(null); go(null, {}, true); }} onOpenNote={(other) => go(other)} />;
   const rail = (
-    <TagRail tags={railTags(archive ? archiveTags : tags, tags)} archive={archive} filter={filter} counts={{ list: !archive && filter.scope === 'list' && !filter.tag && !filter.q && loaded ? visible.length : null }}
+    <TagRail tags={railTags(archive ? archiveTags : tags, tags, showAllTags)} showAll={showAllTags} onShowAll={setShowAllTags} archive={archive} filter={filter} counts={{ list: !archive && filter.scope === 'list' && !filter.tag && !filter.q && loaded ? visible.length : null }}
       onScope={(s) => go(id, { scope: s, tag: undefined, q: undefined })} onTag={(t) => go(id, { tag: t || undefined, scope: 'list', q: undefined })} onEditTag={setEditingTag} />
   );
 
   const panel = (
     <div className="relative min-w-0">
       <Divider side="left" lit={foreign} label="Drag to change the width of the editor" onSize={(x, box) => updateSettings({ paneWidth: Math.round(Math.min(SIZE_LIMITS.paneWidth.max, Math.max(SIZE_LIMITS.paneWidth.min, (box.right - x) / rem()))) })} />
-      <div key={id} className={cn(STICKY, 'tk-slide-in')}><div className="md:min-h-0 md:flex-1 md:overflow-y-auto">{editor}</div><CloseBar onClose={close} /></div>
+      <div key={id} className={cn(STICKY, !editorFocusPending(id!) && 'tk-slide-in')}><div className="md:min-h-0 md:flex-1 md:overflow-y-auto">{editor}</div><CloseBar onClose={close} /></div>
     </div>);
   return (
     <>
@@ -196,7 +199,7 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
           {(wide || !id) && list}
           {id ? <div className="relative min-w-0 md:col-start-2 md:row-start-2 lg:col-start-3 lg:row-start-1">
             {wide && <Divider side="left" lit={foreign} label="Drag to change the width of the list" onSize={(x) => { const l = listRef.current?.getBoundingClientRect(); if (l) updateSettings({ listWidth: Math.round(Math.min(SIZE_LIMITS.listWidth.max, Math.max(SIZE_LIMITS.listWidth.min, (x - l.left) / rem()))) }); }} />}
-            <div key={id} className={cn(STICKY, 'tk-slide-in')}><div className="md:min-h-0 md:flex-1 md:overflow-y-auto">{editor}</div><CloseBar onClose={close} /></div></div>
+            <div key={id} className={cn(STICKY, !editorFocusPending(id!) && 'tk-slide-in')}><div className="md:min-h-0 md:flex-1 md:overflow-y-auto">{editor}</div><CloseBar onClose={close} /></div></div>
             : wide && !idleFull && <Overview notes={visible} filter={filter} archive={archive} onOpen={(nid) => go(nid)} />}
         </div>)}
       {keep && !pane && id && <Dialog title="Note" wide onClose={close}>{editor}</Dialog>}

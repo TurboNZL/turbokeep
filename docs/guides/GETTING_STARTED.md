@@ -41,3 +41,4 @@ Install the **Android app** from the latest GitHub release (an `.apk`; see [ANDR
 
 ## 5. Make it yours
 Settings > **Appearance**: 67 colour themes, 33 UI styles, four layouts and the Keep view. These choices are kept per browser, so a phone and a desktop can look different.
+- **Tags column:** *Show all* next to the Tags heading also lists tags with nothing in them on this page (it is not saved: reloading hides them again). On a phone the add box floats at the bottom of the screen and the tags open as a sheet from the *Tags* button.

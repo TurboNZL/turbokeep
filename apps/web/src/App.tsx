@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { api } from './lib/api.ts';
+import { api, ApiError } from './lib/api.ts';
 import { useStore } from './lib/store.ts';
 import { android } from './lib/native.ts';
 import { Layout } from './components/Layout.tsx';
@@ -14,7 +14,10 @@ export function App() {
   const auth = useStore((s) => s.auth);
   const setUser = useStore((s) => s.setUser);
   const refreshMeta = useStore((s) => s.refreshMeta);
-  useEffect(() => { api.me().then((r) => setUser(r.user), () => setUser(null)); }, [setUser]);
+  useEffect(() => {
+    // Opened as the remembered person already; the server confirms. Only a refusal (or nobody remembered) shows the sign-in page: a server that cannot be reached keeps the remembered list on screen.
+    api.me().then((r) => setUser(r.user), (e) => { if (e instanceof ApiError && e.status !== 0 && e.status < 500 || useStore.getState().auth !== 'in') setUser(null); });
+  }, [setUser]);
   useEffect(() => { if (auth === 'in') void refreshMeta(); }, [auth, refreshMeta]);
   // inside the Android app: the widget needs its own API token, made once after signing in
   useEffect(() => {
