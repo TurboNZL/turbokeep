@@ -3,7 +3,7 @@
  * In the Android app the page is bundled (http://localhost) and the server is another origin: its address in front, a bearer token and, behind Cloudflare
  * Access, the service token on every request (the same arrangement as TurboMusic's app).
  */
-import { android, appHeaders, giveToken, saveWithApp, serverUrl } from './native.ts';
+import { android, appFetch, appHeaders, giveToken, saveWithApp, serverUrl } from './native.ts';
 import { earlyMe } from './early.ts';
 export class ApiError extends Error {
   constructor(public status: number, message: string, public body?: any) { super(message); }
@@ -18,10 +18,9 @@ const created = (id: string) => makes.get(id)?.done ?? Promise.resolve();
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(serverUrl(path), { method, credentials: android() ? 'omit' : 'same-origin', headers: { ...appHeaders(), ...(body !== undefined && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}) }, body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body) });
-  } catch {
-    // inside the app, reads go through the app (AccessProxy) but a request with a body goes straight to the server, which must allow this page's origin (CORS): a server older than the app does not
-    throw new ApiError(0, android() && method !== 'GET' ? 'The server did not accept the request from the app. If it is not on the same release as the app, update the server (Settings > This app on a computer, or Update server), then try again.' : 'Cannot reach the server');
+    res = await appFetch(serverUrl(path), { method, headers: { ...appHeaders(), ...(body !== undefined && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}) }, body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body) });
+  } catch (e) {
+    throw new ApiError(0, android() && method !== 'GET' && (e as Error).message && (e as Error).message !== 'Failed to fetch' ? (e as Error).message : 'Cannot reach the server');
   }
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, data?.error ?? `Server said ${res.status}`, data);
