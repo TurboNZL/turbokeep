@@ -32,7 +32,7 @@ object AccessRoute {
     /** The answer to a CORS preflight, so Cloudflare Access (which refuses header-less preflights) never sees it. */
     fun preflightHeaders(requestedHeaders: String?): Map<String, String> = mapOf(
         "Access-Control-Allow-Origin" to "*",
-        "Access-Control-Allow-Methods" to "GET, POST, PUT, DELETE, HEAD, OPTIONS",
+        "Access-Control-Allow-Methods" to "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS", // PATCH: TurboKeep saves a note with PATCH; without it every edit after the first save was refused and the editor said "Offline: will retry"
         "Access-Control-Allow-Headers" to (requestedHeaders?.takeIf { it.isNotBlank() } ?: "Authorization, Content-Type, Range"),
         "Access-Control-Max-Age" to "86400",
     )
