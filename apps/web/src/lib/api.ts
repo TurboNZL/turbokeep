@@ -19,7 +19,10 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   let res: Response;
   try {
     res = await fetch(serverUrl(path), { method, credentials: android() ? 'omit' : 'same-origin', headers: { ...appHeaders(), ...(body !== undefined && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}) }, body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body) });
-  } catch { throw new ApiError(0, 'Cannot reach the server'); }
+  } catch {
+    // inside the app, reads go through the app (AccessProxy) but a request with a body goes straight to the server, which must allow this page's origin (CORS): a server older than the app does not
+    throw new ApiError(0, android() && method !== 'GET' ? 'The server did not accept the request from the app. If it is not on the same release as the app, update the server (Settings > This app on a computer, or Update server), then try again.' : 'Cannot reach the server');
+  }
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, data?.error ?? `Server said ${res.status}`, data);
   return data as T;
