@@ -30,6 +30,11 @@ class AccessRouteTest {
         assertEquals("*", AccessRoute.preflightHeaders(null)["Access-Control-Allow-Origin"])
     }
 
+    @Test fun preflightAllowsEveryMethodTheApiUses() {
+        val methods = AccessRoute.preflightHeaders(null)["Access-Control-Allow-Methods"]!!.split(",").map { it.trim() }
+        for (m in listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")) assertTrue("$m is missing", m in methods)
+    }
+
     @Test fun answerHeadersNeverCarryTwoAllowOrigins() {
         val out = AccessRoute.answerHeaders(mapOf("access-control-allow-origin" to "*", "Access-Control-Expose-Headers" to "X", "Transfer-Encoding" to "chunked", "Content-Type" to "application/json"))
         assertEquals(1, out.keys.count { it.equals("Access-Control-Allow-Origin", ignoreCase = true) })
