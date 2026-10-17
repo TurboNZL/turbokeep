@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Archive, ArchiveRestore, ArrowLeft, CheckCircle2, Download, Link2, ListChecks, Pin, PinOff, RotateCcw, Tags, Trash2, Undo2, X } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowLeft, CheckCircle2, Download, Link2, ListChecks, Pin, PinOff, Tags, Trash2, Undo2, X } from 'lucide-react';
 import { api, ApiError, saveBlob, type Note, type NotePatch } from '../lib/api.ts';
 import { useStore } from '../lib/store.ts';
 import { cn } from '../lib/cn.ts';
@@ -10,6 +10,7 @@ import { linkedNotes } from '../lib/clip.ts';
 import { TagInput } from './TagInput.tsx';
 import { TagPicker } from './TagPicker.tsx';
 import { AutoText } from './AutoText.tsx';
+import { DatePicker } from './DatePicker.tsx';
 import { titleOverflow } from '../lib/title.ts';
 import { recallNote, rememberNote } from '../lib/cache.ts';
 import { takeEditorFocus, takeTypeAhead, peekTypeAhead } from '../lib/focus.ts';
@@ -35,8 +36,21 @@ export function NoteEditor({ id, onBack, onGone, onOpenNote, startPicking, onPic
     return () => { alive = false; };
   }, [id]);
   if (missing) return <p className="p-6 text-sm text-muted">That note no longer exists. <button className="underline" onClick={onGone}>Back to the list</button></p>;
-  if (!detail) return <p className="p-6 text-sm text-muted">Loading…</p>;
+  if (!detail) return <EditorSkeleton />;
   return <Editor key={detail.id} note={detail} onBack={onBack} onGone={onGone} onOpenNote={onOpenNote} startPicking={startPicking} onPicked={onPicked} />;
+}
+
+/** What shows while the note is fetched: the same blocks, the same sizes as the editor, so nothing jumps when the note arrives (a one-line "Loading…" made the panel snap to full size halfway through opening). */
+function EditorSkeleton() {
+  return (
+    <div className="space-y-3" role="status" aria-label="Loading the note">
+      <div className="flex h-10 items-center gap-1.5"><span className="h-3 w-12 animate-pulse rounded bg-raised" /><span className="ml-auto h-6 w-40 animate-pulse rounded bg-raised" /></div>
+      <div className="input !min-h-12 animate-pulse" aria-hidden />
+      <div className="input min-h-[5.5rem] animate-pulse" aria-hidden />
+      <div className="card h-[15.1rem] animate-pulse" aria-hidden />
+      <div className="h-4 w-48 animate-pulse rounded bg-raised" aria-hidden />
+    </div>
+  );
 }
 
 function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { note: Note; onBack?: () => void; onGone: () => void; onOpenNote: (id: string) => void; startPicking?: boolean; onPicked?: () => void }) {
@@ -183,8 +197,7 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
           <div className="space-y-1.5"><span className="text-xs font-medium text-muted">Tags</span><TagInput value={meta.tags} onChange={(tags) => set({ tags })} /></div>
           {meta.onList && <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
             <label className="flex items-center gap-2 text-sm">Due
-              <input type="date" className="input !w-auto" value={toLocalInput(meta.dueDate).slice(0, 10)} onChange={(e) => set({ dueDate: e.target.value ? new Date(`${e.target.value}T12:00`).toISOString() : null })} />
-              {meta.dueDate && <button type="button" className="btn btn-ghost !px-2 text-xs" onClick={() => set({ dueDate: null })}><RotateCcw size={13} />Clear</button>}</label>
+              <DatePicker aria-label="Due date" value={toLocalInput(meta.dueDate).slice(0, 10)} onChange={(v) => set({ dueDate: v ? new Date(`${v}T12:00`).toISOString() : null })} /></label>
           </div>}
           {meta.onList && <label className="flex items-center gap-3 text-sm">Progress
             <input type="range" className="bt-range bt-hit min-w-0 flex-1" min={0} max={100} step={5} value={pct} style={{ '--p': `${pct}%` } as CSSProperties} aria-label={`Progress: ${pct}%`} onChange={(e) => setMeta((m) => ({ ...m, percentDone: Number(e.target.value) / 100 }))}

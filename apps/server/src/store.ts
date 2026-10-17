@@ -158,8 +158,11 @@ function ensureTag(db: DB, userId: number, title: string): string {
 const cleanTag = (s: unknown) => String(s ?? '').trim().replace(/\s+/g, ' ').slice(0, 80);
 
 /** a tag nothing carries, and no sub-tag of it carries either, is deleted (its look with it); a parent such as `work` stays while `work.reports` has notes */
-const dropUnusedTags = (db: DB, userId: number) => run(db, `delete from tags where user_id = ? and id not in (select tag_id from note_tags)
+const dropUnusedTags = (db: DB, userId: number) => {
+  run(db, `delete from tags where user_id = ? and id not in (select tag_id from note_tags)
   and not exists (select 1 from tags c where c.user_id = tags.user_id and substr(c.title, 1, length(tags.title) + 1) = tags.title || '.' and c.id in (select tag_id from note_tags))`, userId);
+  pruneEmoji(db, userId);
+};
 
 function setNoteTags(db: DB, userId: number, noteId: string, tags: unknown) {
   const titles = [...new Set((Array.isArray(tags) ? tags : []).map(cleanTag).filter(Boolean))];
@@ -292,6 +295,7 @@ export function styleTag(db: DB, userId: number, title: string, style: { emoji?:
   run(db, 'update tags set emoji = ?, color = ? where id = ?', emoji, color, src.id);
   if (style.keepTasks !== undefined) run(db, 'update tags set keep_tasks = ? where id = ?', +!!style.keepTasks, src.id);
   if (style.retired !== undefined) run(db, 'update tags set retired = ? where id = ?', +!!style.retired, src.id);
+  pruneEmoji(db, userId); // the picture this tag had before may be unused now
 }
 /** Renames a tag and everything under it (`work` -> `job` also makes `work.reports` into `job.reports`); onto an existing tag it merges. */
 export function renameTag(db: DB, userId: number, from: string, to: string) {
@@ -315,6 +319,7 @@ export function renameTag(db: DB, userId: number, from: string, to: string) {
 export function deleteTag(db: DB, userId: number, title: string, tree = false) {
   run(db, 'delete from tags where user_id = ? and title = ?', userId, title);
   if (tree) run(db, 'delete from tags where user_id = ? and substr(title, 1, ?) = ?', userId, title.length + 1, `${title}.`);
+  pruneEmoji(db, userId);
 }
 
 // ---- imported emoji ----
@@ -323,7 +328,14 @@ const MAX_EMOJI = 300, MAX_EMOJI_BYTES = 120_000;
 const isPng = (b: Uint8Array) => b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
 const isWebp = (b: Uint8Array) => b.length > 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50;
 
-export const listEmoji = (db: DB, userId: number): EmojiRow[] => all(db, 'select id, name from custom_emoji where user_id = ? order by created_at', userId).map((r) => ({ id: r.id as string, name: r.name as string }));
+/** An imported picture nothing uses (no tag shows it) is deleted. One imported a moment ago is kept for a while: it is made before it is chosen. Without a user, every account's. */
+export const EMOJI_GRACE_MS = 10 * 60_000;
+export function pruneEmoji(db: DB, userId?: number, graceMs = EMOJI_GRACE_MS) {
+  const before = new Date(Date.now() - graceMs).toISOString();
+  run(db, `delete from custom_emoji where created_at < ? ${userId === undefined ? '' : 'and user_id = ?'} and not exists (select 1 from tags t where t.user_id = custom_emoji.user_id and t.emoji = ':' || custom_emoji.id || ':')`, ...(userId === undefined ? [before] : [before, userId]));
+}
+
+export const listEmoji = (db: DB, userId: number): EmojiRow[] => (pruneEmoji(db, userId), all(db, 'select id, name from custom_emoji where user_id = ? order by created_at', userId).map((r) => ({ id: r.id as string, name: r.name as string })));
 
 /** The page has already shrunk the picture to emoji size; this only checks it is a small PNG or WebP and keeps it. */
 export function addEmoji(db: DB, userId: number, name: unknown, data: Uint8Array, id?: string): EmojiRow {

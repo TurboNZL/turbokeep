@@ -92,11 +92,15 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   const search = typeof location !== 'undefined' ? location.search : '';
   useEffect(() => { setPage(archive ? 'archive' : 'home', id ?? null, search); }, [id, search, archive, setPage]);
 
-  const close = useCallback(() => { setOpenNote(null); go(null, {}, false); }, [go, setOpenNote]);
+  // "Open from the top" (Settings): an item made by typing in the add box opens in place of the box, with the list under it, instead of beside the list
+  const [topId, setTopId] = useState<string | null>(null);
+  const close = useCallback(() => { setOpenNote(null); setTopId(null); go(null, {}, false); }, [go, setOpenNote]);
   const closeIfOpen = useCallback((nid: string) => { if (useStore.getState().openNote === nid) { setOpenNote(null); nav(homeLink(null, filter, base), { replace: true }); } }, [setOpenNote, nav, base, filter.scope, filter.tag, filter.q]); // eslint-disable-line react-hooks/exhaustive-deps
   const item = useItemUi({ pile: archive ? 'archive' : 'live', open: (nid) => go(nid), closeIfOpen });
 
   const keep = settings.viewStyle !== 'list';
+  const onTop = settings.popupOnType && settings.editorOnTop && !!id && id === topId && !archive;
+  const side = onTop ? undefined : id; // the item shown beside the list (or in a window); an item open on top has no side
   const pane = settings.viewStyle === 'pane' && useWide(1024); // cards with the editor in a panel on the right (not a window)
   // every page and tab keeps the order it was given; "Due soon" is always the closest first
   const skey = sortKey(filter, archive), sort = settings.sorts[skey] ?? settings.sort, soon = filter.scope === 'due' && !filter.tag && !filter.q;
@@ -130,7 +134,7 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   }
 
   const row = (n: Note) => {
-    const props = { n, variant: keep ? 'card' as const : 'row' as const, active: n.id === id, onOpen: () => go(n.id), ...item.rowProps(n) };
+    const props = { n, variant: keep ? 'card' as const : 'row' as const, active: n.id === id, onOpen: () => go(n.id), onClose: close, ...item.rowProps(n) };
     return draggable ? <Sortable key={n.id} id={n.id}>{(drag) => <ItemRow {...props} drag={drag} />}</Sortable> : <ItemRow key={n.id} {...props} />;
   };
   const swapped = useRef(false); // the first list drawn comes in with the page; later ones (another tag, tab or page) swap in
@@ -149,6 +153,8 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   }, [drawn.length, visible.length]);
   const listEl = keep ? <Wall items={drawn} render={row} minRem={settings.cardWidth} gapRem={settings.cardGap} /> : <ul className="space-y-1.5">{drawn.map(row)}</ul>;
 
+  const send = sp.get('send') === '1'; // the widget's "Save to memory": the item opens with the tag picker ready
+  const editor = id && <NoteEditor key={id} id={id} startPicking={send} onPicked={() => nav(homeLink(id, filter, base), { replace: true })} onBack={close} onGone={() => { setOpenNote(null); go(null, {}, true); }} onOpenNote={(other) => go(other)} />;
   const listRef = useRef<HTMLElement>(null);
   const rem = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   const openObj = id ? notes.find((n) => n.id === id) : undefined;
@@ -164,10 +170,11 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
           : <Select className="!w-44 shrink-0 text-sm" aria-label={`Sort ${name}`} value={sort} onChange={(v) => updateSettings({ sorts: { ...settings.sorts, [skey]: v as SortId } })} options={SORTS.map((x) => ({ value: x.id, label: x.label, icon: x.id === sort ? <ArrowDownUp size={14} className="shrink-0 text-accent" /> : undefined }))} />}
       </div>
       {soon && <p className="-mt-1 text-xs text-muted">The next five things with a date, and everything else due before the end of the day, week, month or 3 months they fall in. Overdue ones come first.</p>}
-      {!filter.q && !archive && !soon && <Composer key={filter.tag ?? ''} tag={filter.tag} autoFocus={wide && !id} onAdded={added} onPopup={settings.popupOnType ? (n) => go(n.id) : undefined} />}
+      {onTop && <div key={id} className="tk-expand space-y-2">{editor}<CloseBar onClose={close} /></div>}
+      {!onTop && !filter.q && !archive && !soon && <Composer key={filter.tag ?? ''} tag={filter.tag} autoFocus={wide && !id} onAdded={added} onPopup={settings.popupOnType ? (n) => { if (settings.editorOnTop) setTopId(n.id); go(n.id); } : undefined} />}
       {filter.q && <><p className="text-sm text-muted">Results for “{filter.q}” on {archive ? 'the Archive' : 'Home'} <button className="underline" onClick={() => go(id, { q: undefined })}>clear</button></p><OtherPiles q={filter.q} from={archive ? 'archive' : 'home'} seed={notes.length} /></>}
       {error && <p role="alert" className="text-sm text-bad">{error}</p>}
-      {!wide && !id && openNote && <button className="chip inline-flex items-center gap-1.5" onClick={() => nav(homeLink(openNote, filter, base))}><Pencil size={12} />Continue editing: {openTitle}</button>}
+      {!wide && !side && openNote && <button className="chip inline-flex items-center gap-1.5" onClick={() => nav(homeLink(openNote, filter, base))}><Pencil size={12} />Continue editing: {openTitle}</button>}
       <div key={key} className={cn(swapped.current && 'tk-swap')}>{draggable ? <SortableList ids={drawn.map((n) => n.id)} grid={keep} onMove={(a, b, c) => void move(a, b, c)}>{listEl}</SortableList> : listEl}</div>
       {drawn.length < visible.length && <div ref={more} className="py-3 text-center text-xs text-muted">Showing {drawn.length} of {visible.length}. <button type="button" className="underline" onClick={() => setLimit((l) => l + PAGE)}>Show more</button></div>}
       {loaded && !visible.length && !error && (
@@ -177,8 +184,6 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
     </section>
   );
 
-  const send = sp.get('send') === '1'; // the widget's "Save to memory": the item opens with the tag picker ready
-  const editor = id && <NoteEditor key={id} id={id} startPicking={send} onPicked={() => nav(homeLink(id, filter, base), { replace: true })} onBack={close} onGone={() => { setOpenNote(null); go(null, {}, true); }} onOpenNote={(other) => go(other)} />;
   const rail = (
     <TagRail tags={railTags(archive ? archiveTags : tags, tags, showAllTags)} showAll={showAllTags} onShowAll={setShowAllTags} archive={archive} filter={filter} counts={{ list: !archive && filter.scope === 'list' && !filter.tag && !filter.q && loaded ? visible.length : null }}
       onScope={(s) => go(id, { scope: s, tag: undefined, q: undefined })} onTag={(t) => go(id, { tag: t || undefined, scope: 'list', q: undefined })} onEditTag={setEditingTag} />
@@ -192,17 +197,17 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
   return (
     <>
       {keep ? (
-        <div className={cn('grid grid-cols-[minmax(0,1fr)] gap-4', pane && id ? 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)_minmax(16rem,min(var(--pane-w,28rem),85%))]' : 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)]')}>{rail}{list}{pane && id && panel}</div>
+        <div className={cn('grid grid-cols-[minmax(0,1fr)] gap-4', pane && side ? 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)_minmax(16rem,min(var(--pane-w,28rem),85%))]' : 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)]')}>{rail}{list}{pane && side && panel}</div>
       ) : (
-        <div className={cn('grid grid-cols-[minmax(0,1fr)] gap-4', idleFull ? 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)]' : 'md:grid-cols-[minmax(12rem,min(var(--list-w,26rem),85%))_minmax(0,1fr)] lg:grid-cols-[var(--rail-w,11rem)_minmax(12rem,min(var(--list-w,28rem),85%))_minmax(0,1fr)]')}>
-          {(wide || !id) && <div className="min-w-0 md:col-span-2 lg:col-span-1">{rail}</div>}
-          {(wide || !id) && list}
-          {id ? <div className="relative min-w-0 md:col-start-2 md:row-start-2 lg:col-start-3 lg:row-start-1">
+        <div className={cn('grid grid-cols-[minmax(0,1fr)] gap-4', idleFull ? 'lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)]' : onTop ? 'md:grid-cols-[minmax(0,1fr)] lg:grid-cols-[var(--rail-w,11rem)_minmax(0,1fr)]' : 'md:grid-cols-[minmax(12rem,min(var(--list-w,26rem),85%))_minmax(0,1fr)] lg:grid-cols-[var(--rail-w,11rem)_minmax(12rem,min(var(--list-w,28rem),85%))_minmax(0,1fr)]')}>
+          {(wide || !side) && <div className="min-w-0 md:col-span-2 lg:col-span-1">{rail}</div>}
+          {(wide || !side) && list}
+          {side ? <div className="relative min-w-0 md:col-start-2 md:row-start-2 lg:col-start-3 lg:row-start-1">
             {wide && <Divider side="left" lit={foreign} label="Drag to change the width of the list" onSize={(x) => { const l = listRef.current?.getBoundingClientRect(); if (l) updateSettings({ listWidth: Math.round(Math.min(SIZE_LIMITS.listWidth.max, Math.max(SIZE_LIMITS.listWidth.min, (x - l.left) / rem()))) }); }} />}
             <div key={id} className={cn(STICKY, !editorFocusPending(id!) && 'tk-slide-in')}><div className="md:min-h-0 md:flex-1 md:overflow-y-auto">{editor}</div><CloseBar onClose={close} /></div></div>
-            : wide && !idleFull && <Overview notes={visible} filter={filter} archive={archive} onOpen={(nid) => go(nid)} />}
+            : wide && !idleFull && !onTop && <Overview notes={visible} filter={filter} archive={archive} onOpen={(nid) => go(nid)} />}
         </div>)}
-      {keep && !pane && id && <Dialog title="Note" wide onClose={close}>{editor}</Dialog>}
+      {keep && !pane && side && <Dialog title="Note" wide onClose={close}>{editor}</Dialog>}
       {editingTag && <TagDialog tag={editingTag} onClose={() => setEditingTag(null)} onDone={() => { const gone = editingTag.title === filter.tag; setEditingTag(null); void refreshMeta(); if (gone) go(id, { tag: undefined }); void load(); }} />}
       {item.ui}
     </>
