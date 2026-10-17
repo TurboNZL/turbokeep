@@ -1,7 +1,6 @@
 package app.turbokeep.android
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Message
@@ -29,7 +28,7 @@ import app.turbokeep.android.update.AppUpdater
 /**
  * Shows the web client (bundled in the app's assets and served from http://localhost, like TurboMusic's) full screen. The page talks to your TurboKeep
  * server across origins with a bearer token (made when you sign in, or taken from a pairing code), and behind Cloudflare Access with the service token
- * (AccessProxy). This class supplies what a browser tab cannot: the server address screen, file pick for imports, saving exports, dialogs, the token
+ * (AccessProxy). This class supplies what a browser tab cannot: file pick for imports, saving exports, dialogs, the token
  * for the widget, and updating the app.
  */
 class MainActivity : AppCompatActivity() {
@@ -39,11 +38,6 @@ class MainActivity : AppCompatActivity() {
         fileCallback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(r.resultCode, r.data))
         fileCallback = null
     }
-    private val setup = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        if (r.resultCode == Activity.RESULT_OK) load(pendingPath) else if (!ServerPrefs(this).configured) finish()
-    }
-    private var pendingPath: String? = null
-
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,7 +66,7 @@ class MainActivity : AppCompatActivity() {
         }
         web.setBackgroundColor(0xFF0B0B10.toInt())
         CookieManager.getInstance().setAcceptCookie(true)
-        web.addJavascriptInterface(TurboKeepBridge(this) { startSetup() }, "TurboKeepAndroid")
+        web.addJavascriptInterface(TurboKeepBridge(this), "TurboKeepAndroid")
 
         val accessProxy = AccessProxy(ServerPrefs(this))
         val loader = WebViewAssetLoader.Builder().setDomain(HOST).setHttpAllowed(true).addPathHandler("/", SpaAssets(this)).build()
@@ -127,16 +121,11 @@ class MainActivity : AppCompatActivity() {
             web.post { web.evaluateJavascript("window.dispatchEvent(new CustomEvent('turbokeep-update',{detail:${s.json()}}))", null) }
         }
 
-        if (savedInstanceState != null) web.restoreState(savedInstanceState)
-        else if (!ServerPrefs(this).configured) { pendingPath = intent.getStringExtra(EXTRA_PATH); startSetup() }
-        else load(intent.getStringExtra(EXTRA_PATH))
+        if (savedInstanceState != null) web.restoreState(savedInstanceState) else load(intent.getStringExtra(EXTRA_PATH))
     }
 
-    private fun startSetup() = setup.launch(Intent(this, SetupActivity::class.java))
-
     private fun load(path: String?) {
-        if (!ServerPrefs(this).configured) return
-        // the page is the bundled one; it asks the bridge where the server is and which token to use
+        // the page is the bundled one; it knows the server (its own Settings, like TurboMusic) and shows a connect screen when it has none
         web.loadUrl("http://$HOST" + (path ?: "/"))
     }
 

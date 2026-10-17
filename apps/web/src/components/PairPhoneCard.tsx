@@ -5,7 +5,7 @@ import { createPairCodec } from '../lib/pairCode.ts';
 import { PairDevice } from './PairDevice.tsx';
 import { Section } from './Section.tsx';
 
-/** TurboKeep's pairing codes start with KEEP1-, so one made for another TurboNZL app is never taken for this one's. The Android app reads them (SetupActivity). */
+/** TurboKeep's pairing codes start with KEEP1-, so one made for another TurboNZL app is never taken for this one's. The Android app's page reads them too (Settings > This app, or its first screen). */
 export const keepCodec = createPairCodec('KEEP1-');
 
 /**
@@ -19,7 +19,7 @@ export function PairPhoneCard() {
     <Section title="Pair a phone">
       <p className="text-sm text-muted">Sets up the TurboKeep Android app (its widget, quick add and share target) in one paste: the address, a token of its own and, if you saved one above, the Cloudflare Access service token.</p>
       <PairDevice codec={keepCodec} appName="TurboKeep" defaultAddress={serverBase() || location.origin} getToken={async () => (await api.createToken('Paired device')).token} access={{ id: cfAccessId, secret: cfAccessSecret }} addressPlaceholder="https://keep.example.com"
-        label="Make a pairing code" afterMake="On the phone, open the TurboKeep app. On its first screen (or Settings > This app > Change server) paste the code under “Pairing code” and press Use code." />
+        label="Make a pairing code" afterMake="On the phone, open the TurboKeep app. On its first screen (or Settings > This app) open “Pair a device”, paste the code under “Use a code from another device” and press Connect." />
     </Section>
   );
 }

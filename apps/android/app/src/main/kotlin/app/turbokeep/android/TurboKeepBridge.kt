@@ -16,7 +16,7 @@ import org.json.JSONObject
  * What the web page can ask the app for, as `window.TurboKeepAndroid`: strings only, results as JSON (the engine's bridge rules).
  * The page uses it to hand over the API token the widget needs, to save exports into Downloads, and for the update card in Settings > This app.
  */
-class TurboKeepBridge(private val context: Context, private val changeServer: () -> Unit) {
+class TurboKeepBridge(private val context: Context) {
     private val prefs = ServerPrefs(context)
     private val main = Handler(Looper.getMainLooper())
 
@@ -24,14 +24,9 @@ class TurboKeepBridge(private val context: Context, private val changeServer: ()
         .put("version", BuildConfig.VERSION_NAME).put("serverUrl", prefs.serverUrl).put("hasToken", prefs.token.isNotEmpty())
         .put("hasUpdateToken", prefs.updateToken.isNotEmpty()).put("update", JSONObject(AppUpdater.state.json())).toString()
 
-    /** the page signed in and made an API token for this phone: the widget and quick add use it */
-    @JavascriptInterface fun saveToken(token: String) { prefs.token = token; TasksWidgetProvider.refreshAll(context) }
-    /** the Cloudflare Access service token's headers as a JSON object ({} when there is none): the page adds them to the requests it makes itself (those with a body cannot be seen by the app) */
-    @JavascriptInterface fun accessHeaders(): String = JSONObject(prefs.accessHeaders()).toString()
-    @JavascriptInterface fun hasToken(): Boolean = prefs.token.isNotEmpty()
-    /** the server's address and this phone's API token: the bundled page talks to the server itself with them (like TurboMusic's setServer, the other way round: the address is typed in SetupActivity) */
-    @JavascriptInterface fun serverUrl(): String = prefs.serverUrl
-    @JavascriptInterface fun token(): String = prefs.token
+    /** The page tells the app which server it uses and how to sign in (TurboMusic's bridge does the same): the widget and quick add use the address and token, AccessProxy the address and the service token. */
+    @JavascriptInterface fun setServer(url: String, token: String) { prefs.serverUrl = url; prefs.token = token; TasksWidgetProvider.refreshAll(context) }
+    @JavascriptInterface fun setAccess(id: String, secret: String) { prefs.cfId = id; prefs.cfSecret = secret }
     /** this app adds the service token to the page's own GET requests for the server (AccessProxy), so images load without the page fetching them */
     @JavascriptInterface fun accessInjected(): Boolean = true
     @JavascriptInterface fun refreshWidgets() { TasksWidgetProvider.refreshAll(context) }
@@ -39,7 +34,6 @@ class TurboKeepBridge(private val context: Context, private val changeServer: ()
     @JavascriptInterface fun openWidgetSettings() { main.post { context.startActivity(Intent(context, WidgetSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
     /** the window that chooses the note of a one-note widget, when the phone has one */
     @JavascriptInterface fun hasNoteWidget(): Boolean = NoteWidgetProvider.ids(context).isNotEmpty()
-    @JavascriptInterface fun changeServer() { main.post { changeServer.invoke() } }
 
     @JavascriptInterface fun checkUpdate() { AppUpdater.check(context) }
     @JavascriptInterface fun installUpdate() { main.post { AppUpdater.install(context) } }

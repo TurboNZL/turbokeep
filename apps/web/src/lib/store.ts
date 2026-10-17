@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS, loadSettings, saveSettings, type DeviceSettings } fro
 import { takeMeta } from './prefetch.ts';
 import { applyAppearance } from './appearance.ts';
 import { tasksInTags } from './views.ts';
+import { onNewToken, syncNativeServer } from './native.ts';
 import { cacheLevel, ownCache, recall, remember, setCacheLevel } from './cache.ts';
 
 export interface Toast { id: number; message: string; tone?: 'bad'; action?: { label: string; run: () => void } }
@@ -53,6 +54,7 @@ export const useStore = create<State>((set, get) => ({
     const settings = { ...get().settings, ...patch };
     saveSettings(settings);
     if (patch.cacheLevel) setCacheLevel(settings.cacheLevel);
+    if (['serverUrl', 'token', 'cfAccessId', 'cfAccessSecret'].some((k) => k in patch)) syncNativeServer(settings);
     set({ settings });
     if (patch.countTasks !== undefined) void get().refreshMeta(); // the tags column counts differently now: ask again at once, no reload needed
     applyAppearance(settings);
@@ -84,3 +86,8 @@ export const useStore = create<State>((set, get) => ({
 }));
 
 export { DEFAULT_SETTINGS };
+
+// inside the Android app the page is bundled and the connection lives in these settings (as in TurboMusic): feed it to api.ts and to the app at start,
+// and save a token the page learns by itself (signing in)
+syncNativeServer(useStore.getState().settings);
+onNewToken((token) => useStore.getState().updateSettings({ token }));

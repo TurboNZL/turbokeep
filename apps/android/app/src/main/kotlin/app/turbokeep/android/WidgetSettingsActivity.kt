@@ -112,7 +112,7 @@ class WidgetSettingsActivity : AppCompatActivity() {
         root.addView(TextView(this).apply { text = "Off: the open button goes straight to TurboKeep. These settings stay one long press away on the widget (Reconfigure)."; textSize = 12f })
 
         val open = Button(this).apply { text = "Open TurboKeep"; setOnClickListener { startActivity(Intent(this@WidgetSettingsActivity, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); finish() } }
-        val server = Button(this).apply { text = "Server and Cloudflare Access"; setOnClickListener { startActivity(Intent(this@WidgetSettingsActivity, SetupActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+        val server = Button(this).apply { text = "Server and Cloudflare Access"; setOnClickListener { startActivity(Intent(this@WidgetSettingsActivity, MainActivity::class.java).putExtra(MainActivity.EXTRA_PATH, "/settings?tab=app").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); finish() } }
         val done = Button(this).apply { text = "Done"; setOnClickListener { finish() } }
         root.addView(open, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.END; addView(server); addView(done) })

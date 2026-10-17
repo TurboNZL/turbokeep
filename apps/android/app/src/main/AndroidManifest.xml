@@ -25,8 +25,6 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".SetupActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
-
         <!-- add something without opening the app: from the widget, and as a share target for text -->
         <activity
             android:name=".QuickAddActivity"

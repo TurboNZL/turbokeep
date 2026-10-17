@@ -39,6 +39,9 @@ export interface DeviceSettings {
   /** The Cloudflare Access service token of this server, kept for the pairing code (the phone needs it when the server sits behind Cloudflare Access). */
   cfAccessId: string;
   cfAccessSecret: string;
+  /** Inside the Android app (the page is bundled, like TurboMusic's): the server's address and this device's API token. Empty in a browser, where the page is the server's own. */
+  serverUrl: string;
+  token: string;
   /** How the items are ordered when a page or tab has no choice of its own. 'manual' is your own order (drag to change it); the others are automatic and switch dragging off. */
   sort: SortId;
   /** The order each page and tab chose (see `sortKey` in views.ts: 'list', 'all', 'tag:work', 'archive:list' ...). */
@@ -61,7 +64,7 @@ export const NAV_IDS: NavId[] = ['home', 'archive', 'bin', 'settings'];
 
 export const DEFAULT_SETTINGS: DeviceSettings = {
   theme: 'auto', ui: 'auto', layout: 'side', glass: 'regular', wallpaper: false, wallpaperDarkness: 0.35, wallpaperCustom: false,
-  themeUpdates: true, themesToken: '', noteFont: 'sans', markdownSplit: false, viewStyle: 'list', cfAccessId: '', cfAccessSecret: '', fullWhenIdle: false, dividerWhenForeign: false, countTasks: 'never', cacheLevel: 'medium', buttonSize: 'medium', paneWidth: 28, railEmoji: 1.25, railText: 0.875, cardGap: 0.75, popupOnType: false, editorOnTop: false, sort: 'manual', sorts: {}, railWidth: 11, listWidth: 28, cardWidth: 16, navOrder: NAV_IDS,
+  themeUpdates: true, themesToken: '', noteFont: 'sans', markdownSplit: false, viewStyle: 'list', cfAccessId: '', cfAccessSecret: '', serverUrl: '', token: '', fullWhenIdle: false, dividerWhenForeign: false, countTasks: 'never', cacheLevel: 'medium', buttonSize: 'medium', paneWidth: 28, railEmoji: 1.25, railText: 0.875, cardGap: 0.75, popupOnType: false, editorOnTop: false, sort: 'manual', sorts: {}, railWidth: 11, listWidth: 28, cardWidth: 16, navOrder: NAV_IDS,
 };
 
 const KEY = 'turbokeep.settings';

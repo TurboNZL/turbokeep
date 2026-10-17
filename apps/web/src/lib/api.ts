@@ -3,7 +3,7 @@
  * In the Android app the page is bundled (http://localhost) and the server is another origin: its address in front, a bearer token and, behind Cloudflare
  * Access, the service token on every request (the same arrangement as TurboMusic's app).
  */
-import { android, appHeaders, saveWithApp, serverUrl } from './native.ts';
+import { android, appHeaders, giveToken, saveWithApp, serverUrl } from './native.ts';
 import { earlyMe } from './early.ts';
 export class ApiError extends Error {
   constructor(public status: number, message: string, public body?: any) { super(message); }
@@ -46,7 +46,7 @@ type SignedIn = { user: { id: number; username: string }; token?: string };
 const deviceName = () => (android() ? { device: 'Android app' } : {});
 async function signedIn(p: Promise<SignedIn>): Promise<{ user: { id: number; username: string } }> {
   const r = await p;
-  if (r.token) android()?.saveToken(r.token);
+  if (r.token) giveToken(r.token);
   return { user: r.user };
 }
 
@@ -58,7 +58,7 @@ export const api = {
   register: (username: string, password: string, setupCode?: string) => signedIn(req<SignedIn>('POST', '/api/auth/register', { username, password, setupCode, ...deviceName() })),
   updateInfo: () => req<ServerUpdate>('GET', '/api/admin/update'),
   startUpdate: () => req<unknown>('POST', '/api/admin/update'),
-  logout: async () => { try { return await req<unknown>('POST', '/api/auth/logout'); } finally { android()?.saveToken(''); } },
+  logout: async () => { try { return await req<unknown>('POST', '/api/auth/logout'); } finally { if (android()) giveToken(''); } },
   changePassword: (current: string, next: string) => req<unknown>('POST', '/api/auth/password', { current, next }),
   tokens: () => req<{ id: string; name: string; createdAt: string; lastUsed: string | null }[]>('GET', '/api/tokens'),
   createToken: (name: string) => req<{ token: string }>('POST', '/api/tokens', { name }),
