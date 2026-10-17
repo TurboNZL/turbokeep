@@ -22,8 +22,16 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   } catch (e) {
     throw new ApiError(0, android() && method !== 'GET' && (e as Error).message && (e as Error).message !== 'Failed to fetch' ? (e as Error).message : 'Cannot reach the server');
   }
-  const data = await res.json().catch(() => null);
+  const text = await res.text().catch(() => '');
+  let data: any = null;
+  try { data = text ? JSON.parse(text) : null; } catch { /* not JSON: handled below */ }
+  if (res.status >= 300 && res.status < 400) {
+    const to = res.headers.get('location');
+    throw new ApiError(res.status, `The request was redirected${to ? ` to ${to.slice(0, 80)}` : ''} instead of answered. Behind Cloudflare Access that is its sign-in page: the service token was not accepted for this request.`);
+  }
   if (!res.ok) throw new ApiError(res.status, data?.error ?? `Server said ${res.status}`, data);
+  // a success that is not JSON is not TurboKeep (Cloudflare Access's sign-in page, a proxy's error page, an empty answer): never hand a null to the screens
+  if (data === null && res.status !== 204) throw new ApiError(res.status, `The address answered, but not like TurboKeep (HTTP ${res.status}, ${res.headers.get('content-type') ?? 'no type'}${text ? `: "${text.replace(/\s+/g, ' ').slice(0, 60)}"` : ', empty'}). Behind Cloudflare Access this is usually its sign-in page: check the service token and that its policy has the action Service Auth.`);
   return data as T;
 }
 

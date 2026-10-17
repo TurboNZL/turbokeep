@@ -66,13 +66,13 @@ let nextRequest = 0;
 const waiting = new Map<string, { ok: (r: Response) => void; fail: (e: Error) => void }>();
 if (typeof window !== 'undefined') {
   window.addEventListener('turbokeep-request', (e) => {
-    const d = (e as CustomEvent<{ id: string; status?: number; body?: string; error?: string }>).detail;
+    const d = (e as CustomEvent<{ id: string; status?: number; body?: string; error?: string; type?: string; location?: string }>).detail;
     const w = waiting.get(d.id);
     if (!w) return;
     waiting.delete(d.id);
     if (d.error !== undefined || d.status === undefined) { w.fail(new Error(d.error ?? 'No answer')); return; }
     const bytes = Uint8Array.from(atob(d.body ?? ''), (c) => c.charCodeAt(0));
-    w.ok(new Response(d.status === 204 || d.status === 205 || d.status === 304 ? null : bytes, { status: d.status }));
+    w.ok(new Response(d.status === 204 || d.status === 205 || d.status === 304 ? null : bytes, { status: d.status, headers: { ...(d.type ? { 'content-type': d.type } : {}), ...(d.location ? { location: d.location } : {}) } }));
   });
 }
 const toBase64 = (bytes: Uint8Array) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
