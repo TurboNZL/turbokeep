@@ -1,5 +1,3 @@
-import { appFetch } from './native.ts';
-
 export interface SpeedLine { label: string; ms: number | null; note: string }
 
 /** Time until the first bytes of a response arrive (headers plus the first chunk), the figure a person feels as "it hangs before it starts". */
@@ -24,11 +22,11 @@ export async function speedTest(base: string, headers: Record<string, string>, t
   await guard('Server answers', {}, '/api/health', (s) => (s === 200 ? 'ok' : s === 302 || s === 401 || s === 403 ? `HTTP ${s}: Cloudflare Access is refusing the request, check the service token` : `HTTP ${s}`));
   await guard('Server answers again (connection reused)', {}, '/api/health', () => 'a second request on a warm connection; far smaller than the first means the first was mostly the connection set-up');
   if (token) await guard('Signed-in request', { headers: { Authorization: `Bearer ${token}` } }, '/api/auth/me', (s) => (s === 200 ? 'the token is accepted' : s === 401 ? 'the server does not know this token' : `HTTP ${s}`));
-  // A request with a body (sign-in, saving) is not a GET: the page sends it itself, so the server's answer has to allow this page (CORS) and Cloudflare Access has to let the preflight and the POST through. The GET lines above cannot show that.
+  // A request with a body (sign-in, saving) is not a GET: the page sends it itself, so the server's answer has to allow this page (CORS) and Cloudflare Access has to accept the service token on the preflight and the POST. The GET lines above cannot show that.
   // Harmless: it is refused (not signed in, or a wrong body) and changes nothing; any answer at all means the page may talk to the server.
   try {
     const t0 = performance.now();
-    const res = await appFetch(base + '/api/auth/password', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: '{}' });
+    const res = await f(base + '/api/auth/password', { method: 'POST', cache: 'no-store', headers: { ...headers, 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: '{}' });
     const r = { ms: Math.round(performance.now() - t0), status: res.status };
     const sample = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 60);
     const json = (() => { try { JSON.parse(sample.length < 60 ? sample : '{}'); return true; } catch { return false; } })();
