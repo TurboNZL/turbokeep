@@ -30,7 +30,9 @@ export async function speedTest(base: string, headers: Record<string, string>, t
     const t0 = performance.now();
     const res = await appFetch(base + '/api/auth/password', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: '{}' });
     const r = { ms: Math.round(performance.now() - t0), status: res.status };
-    out.push({ label: 'Write request (POST)', ms: r.ms, note: r.status === 401 || r.status === 400 || r.status === 403 || r.status === 404 || r.status === 405 ? `answered HTTP ${r.status}: the page may send requests with a body (it was refused on purpose)` : r.status === 302 ? 'HTTP 302: Cloudflare Access is redirecting the POST to its sign-in page' : `HTTP ${r.status}` });
+    const sample = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 60);
+    const json = (() => { try { JSON.parse(sample.length < 60 ? sample : '{}'); return true; } catch { return false; } })();
+    out.push({ label: 'Write request (POST)', ms: r.ms, note: r.status === 401 || r.status === 400 || r.status === 403 || r.status === 404 || r.status === 405 ? `answered HTTP ${r.status}: the page may send requests with a body (it was refused on purpose)` : r.status >= 300 && r.status < 400 ? `HTTP ${r.status}: redirected (to ${res.headers.get('location')?.slice(0, 60) ?? '?'}): Cloudflare Access did not accept the service token for this request` : r.status === 200 && !json ? `HTTP 200 but not TurboKeep data (${res.headers.get('content-type') ?? 'no type'}: "${sample}"): usually Cloudflare Access's sign-in page` : `HTTP ${r.status}` });
   } catch (e) {
     out.push({ label: 'Write request (POST)', ms: null, note: 'did not get an answer. GET works, so look at the Access application (it must let POST through for the service token). ' + ((e as Error).message ?? '') });
   }

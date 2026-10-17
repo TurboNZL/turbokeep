@@ -60,12 +60,14 @@ class TurboKeepBridge(private val context: Context, private val view: android.we
                 b.method(m, body)
                 http.newCall(b.build()).execute().use { r ->
                     reply.put("status", r.code).put("body", Base64.encodeToString(r.body?.bytes() ?: ByteArray(0), Base64.NO_WRAP))
+                        .put("type", r.header("Content-Type") ?: "").put("location", r.header("Location") ?: "")
                 }
             } catch (e: Exception) { reply.put("error", e.message ?: e.javaClass.simpleName) }
             view.post { view.evaluateJavascript("window.dispatchEvent(new CustomEvent('turbokeep-request',{detail:$reply}))", null) }
         }.start()
     }
-    private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).build()
+    // redirects are not followed: Cloudflare Access answers a refused request with a redirect to its sign-in page, and following it would hide that behind a 200
+    private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build()
 
     @JavascriptInterface fun refreshWidgets() { TasksWidgetProvider.refreshAll(context) }
     /** Settings > This app > Android app: the widget's settings window, opened from the page (it has no widget to belong to, so it holds the shared choices: text size, spacing, buttons, order) */
