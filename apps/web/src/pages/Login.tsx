@@ -7,6 +7,7 @@ import { ServerConnectCard } from '../components/ServerConnectCard.tsx';
 /** Sign in, or (first run, or when the server allows sign-ups) create an account. */
 export function LoginPage() {
   const setUser = useStore((s) => s.setUser);
+  const { serverUrl, token, cfAccessId, cfAccessSecret } = useStore((s) => s.settings);
   const [info, setInfo] = useState<SetupInfo | null>(null);
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
@@ -14,7 +15,8 @@ export function LoginPage() {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { api.setup().then((i) => { setInfo(i); if (i.needsSetup) setMode('register'); }, () => setError('Cannot reach the server.')); }, []);
+  // asked again whenever the connection changes: inside the app the address and Access token can be entered on this very screen
+  useEffect(() => { setInfo(null); api.setup().then((i) => { setInfo(i); setError(null); if (i.needsSetup) setMode('register'); }, () => setError('Cannot reach the server. Check the address and Cloudflare Access token under “Server and Cloudflare Access” below.')); }, [serverUrl, token, cfAccessId, cfAccessSecret]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
@@ -30,7 +32,7 @@ export function LoginPage() {
         <label className="block space-y-1 text-sm">Password{mode === 'register' && <span className="text-muted"> (at least 10 characters)</span>}<input className="input" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required minLength={mode === 'register' ? 10 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} /></label>
         {mode === 'register' && info?.setupCodeRequired && <label className="block space-y-1 text-sm">Setup code<input className="input font-mono" autoComplete="off" required value={code} onChange={(e) => setCode(e.target.value.trim())} /><span className="text-xs text-muted">Printed by the installer and in the server log (<code>journalctl -u turbokeep</code>). It stops strangers claiming a server that is already reachable.</span></label>}
         {error && <div role="alert" className="rounded-theme bg-bad/15 p-2.5 text-sm text-bad">{error}</div>}
-        <button className="btn btn-accent w-full" disabled={busy || !info}>{mode === 'login' ? 'Sign in' : 'Create account'}</button>
+        <button className="btn btn-accent w-full" disabled={busy}>{mode === 'login' ? 'Sign in' : 'Create account'}</button>
         {canRegister && !info?.needsSetup && <button type="button" className="btn btn-ghost w-full text-sm" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>{mode === 'login' ? 'Create an account' : 'I already have an account'}</button>}
       </form>
       {android() && <details className="mt-3 w-full max-w-sm text-sm"><summary className="cursor-pointer text-center text-muted">Server and Cloudflare Access</summary><div className="mt-2"><ServerConnectCard /></div></details>}
