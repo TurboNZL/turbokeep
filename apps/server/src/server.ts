@@ -7,7 +7,7 @@ import { repoRoot } from './version.ts';
 import { Updater } from './update.ts';
 import { loadConfig, openHint } from './config.ts';
 import { get, openDb } from './db.ts';
-import { createUser } from './store.ts';
+import { createUser, pruneEmoji } from './store.ts';
 import { hashPassword } from './auth.ts';
 
 const cfg = loadConfig();
@@ -23,6 +23,10 @@ if (!get(db, 'select 1 x from users limit 1')) {
     console.log(`\nNo account yet. Open the app and create yours with the setup code: ${setup.code}\n`);
   }
 }
+
+// imported pictures no tag uses are deleted (at start, then hourly; also whenever a tag changes)
+pruneEmoji(db);
+setInterval(() => pruneEmoji(db), 3_600_000).unref();
 
 // "Update server" is offered only from a git checkout that has the script, under systemd (INVOCATION_ID) or when asked for (TURBOKEEP_UPDATE=1); TURBOKEEP_UPDATE=0 switches it off
 const script = resolve(repoRoot, 'scripts/update.sh');

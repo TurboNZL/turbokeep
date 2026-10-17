@@ -34,6 +34,8 @@ export interface DeviceSettings {
   cardGap: number;
   /** In the Keep views: typing the first letter in the add box opens the item straight away (in its window or panel) with that letter in it. */
   popupOnType: boolean;
+  /** With popupOnType: the item made by typing opens above the list instead (the add box grows into the editor and the page splits from the top). */
+  editorOnTop: boolean;
   /** The Cloudflare Access service token of this server, kept for the pairing code (the phone needs it when the server sits behind Cloudflare Access). */
   cfAccessId: string;
   cfAccessSecret: string;
@@ -59,7 +61,7 @@ export const NAV_IDS: NavId[] = ['home', 'archive', 'bin', 'settings'];
 
 export const DEFAULT_SETTINGS: DeviceSettings = {
   theme: 'auto', ui: 'auto', layout: 'side', glass: 'regular', wallpaper: false, wallpaperDarkness: 0.35, wallpaperCustom: false,
-  themeUpdates: true, themesToken: '', noteFont: 'sans', markdownSplit: false, viewStyle: 'list', cfAccessId: '', cfAccessSecret: '', fullWhenIdle: false, dividerWhenForeign: false, countTasks: 'never', cacheLevel: 'medium', buttonSize: 'medium', paneWidth: 28, railEmoji: 1.25, railText: 0.875, cardGap: 0.75, popupOnType: false, sort: 'manual', sorts: {}, railWidth: 11, listWidth: 28, cardWidth: 16, navOrder: NAV_IDS,
+  themeUpdates: true, themesToken: '', noteFont: 'sans', markdownSplit: false, viewStyle: 'list', cfAccessId: '', cfAccessSecret: '', fullWhenIdle: false, dividerWhenForeign: false, countTasks: 'never', cacheLevel: 'medium', buttonSize: 'medium', paneWidth: 28, railEmoji: 1.25, railText: 0.875, cardGap: 0.75, popupOnType: false, editorOnTop: false, sort: 'manual', sorts: {}, railWidth: 11, listWidth: 28, cardWidth: 16, navOrder: NAV_IDS,
 };
 
 const KEY = 'turbokeep.settings';

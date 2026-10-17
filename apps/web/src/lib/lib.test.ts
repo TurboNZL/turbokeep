@@ -216,6 +216,7 @@ describe('a title too long to be a title', () => {
     expect(o.title).toBe('Friday, 16 Oct 2026 at 09:05');
     expect(o.text).toBe(`${'y'.repeat(TITLE_MAX + 1)}\n\nold text`);
     expect(o.caret).toBe(TITLE_MAX + 1);
+    expect(titleOverflow(`${'w'.repeat(TITLE_MAX)} `, '')!.text).toBe(`${'w'.repeat(TITLE_MAX)} `); // a space at the end is kept, or the next word would stick to this one
     expect(titleOverflow('z'.repeat(200), '')!.text).toBe('z'.repeat(200));
     expect(titleOverflow('z'.repeat(200), '', 7)!.caret).toBe(7); // the cursor stays where it was in the title
   });

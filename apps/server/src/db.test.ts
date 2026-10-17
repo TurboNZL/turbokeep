@@ -119,3 +119,23 @@ describe('database file', () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
+
+describe('imported pictures nothing uses', () => {
+  it('are deleted after a grace period, the ones a tag shows are kept', async () => {
+    const { createUser, addEmoji, listEmoji, pruneEmoji, styleTag, createNote } = await import('./store.ts');
+    const { openDb } = await import('./db.ts');
+    const db = openDb(':memory:');
+    const uid = createUser(db, 'u', 'x');
+    const png = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'));
+    const used = addEmoji(db, uid, 'used', png), spare = addEmoji(db, uid, 'spare', png);
+    createNote(db, uid, { title: 'a', tags: ['t'] });
+    styleTag(db, uid, 't', { emoji: `:${used.id}:` });
+    pruneEmoji(db, uid); // just made: both are kept for a while
+    expect(listEmoji(db, uid).map((e) => e.id).sort()).toEqual([used.id, spare.id].sort());
+    pruneEmoji(db, undefined, -1000);
+    expect(listEmoji(db, uid).map((e) => e.id)).toEqual([used.id]);
+    styleTag(db, uid, 't', { emoji: '🙂' }); // the tag lets go of it
+    pruneEmoji(db, uid, -1000);
+    expect(listEmoji(db, uid)).toEqual([]);
+  });
+});

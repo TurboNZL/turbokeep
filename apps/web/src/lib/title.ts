@@ -9,6 +9,6 @@ export const TITLE_MAX = 150;
  */
 export function titleOverflow(title: string, text: string, at?: number | null, now = new Date()): { title: string; text: string; caret: number } | null {
   if (title.length <= TITLE_MAX) return null;
-  const moved = title.trimEnd();
+  const moved = title; // (the last character may be the space between two words: it must reach the description, or the next word would stick to the previous one)
   return { title: dateTitle(now), text: text ? `${moved}\n\n${text}` : moved, caret: at == null ? moved.length : Math.max(0, Math.min(at, moved.length)) };
 }

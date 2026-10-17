@@ -17,7 +17,7 @@
 [data-layout="topbar"] .bt-toplink { font-size: 0.75rem; line-height: 1rem; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: hsl(var(--muted)); transition: color var(--dur) var(--ease); }
 [data-layout="topbar"] .bt-toplink:hover { color: color-mix(in srgb, hsl(var(--fg)) 80%, hsl(var(--bg))); }
 [data-layout="topbar"] .bt-toplink[aria-current="page"] { color: hsl(var(--fg)); }
-[data-layout="topbar"] .bt-toplinks { order: 2; flex: 0 1 auto; } /* one row: it must not claim the whole row (it ran 450 px past the window and the page could be nudged sideways) */
+[data-layout="topbar"] .bt-toplinks { flex: 0 1 auto; } /* one row, the tabs right after the name on the left (the search box and New sit at the right edge): it must not claim the whole row (it ran 450 px past the window and the page could be nudged sideways) */
 /* Top tabs: no side bar, every page along the top */
 @media (min-width: 768px) {
   [data-layout="topbar"] .bt-topin { max-width: none; margin: 0; gap: 1rem; }
