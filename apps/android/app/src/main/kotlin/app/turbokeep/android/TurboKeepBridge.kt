@@ -10,13 +10,18 @@ import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.widget.Toast
 import app.turbokeep.android.update.AppUpdater
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 /**
  * What the web page can ask the app for, as `window.TurboKeepAndroid`: strings only, results as JSON (the engine's bridge rules).
  * The page uses it to hand over the API token the widget needs, to save exports into Downloads, and for the update card in Settings > This app.
  */
-class TurboKeepBridge(private val context: Context) {
+class TurboKeepBridge(private val context: Context, private val view: android.webkit.WebView) {
     private val prefs = ServerPrefs(context)
     private val main = Handler(Looper.getMainLooper())
 
@@ -29,6 +34,39 @@ class TurboKeepBridge(private val context: Context) {
     @JavascriptInterface fun setAccess(id: String, secret: String) { prefs.cfId = id; prefs.cfSecret = secret }
     /** this app adds the service token to the page's own GET requests for the server (AccessProxy), so images load without the page fetching them */
     @JavascriptInterface fun accessInjected(): Boolean = true
+    /**
+     * Requests with a body (sign-in, saving a note) done by the app instead of by the web view. The page is http://localhost and the server another origin, so
+     * the web view would send a CORS preflight first, and Android's web view does not let the app answer a preflight (shouldInterceptRequest is not called
+     * for it): it goes to Cloudflare Access without the service token and is refused unless that Access application has "Bypass options requests to origin".
+     * Done here there is no preflight and no CORS at all, and the service token is added. Only the saved server may be asked. The answer comes back as the
+     * `turbokeep-request` event ({id, status, body (base64), error}).
+     */
+    @JavascriptInterface fun request(id: String, method: String, url: String, headersJson: String, bodyBase64: String) {
+        Thread {
+            val reply = JSONObject().put("id", id)
+            try {
+                if (!AccessRoute.isServerRequest(prefs.serverUrl, url)) throw IllegalStateException("That is not the saved server. Press Save first.")
+                val headers = JSONObject(headersJson)
+                val contentType = headers.optString("Content-Type").ifEmpty { null }
+                val b = Request.Builder().url(url)
+                headers.keys().forEach { k -> if (k.lowercase() !in setOf("host", "origin", "referer", "cookie", "content-length")) b.header(k, headers.getString(k)) }
+                prefs.accessHeaders().forEach { (k, v) -> b.header(k, v) }
+                val m = method.uppercase()
+                val body = when {
+                    bodyBase64.isNotEmpty() -> Base64.decode(bodyBase64, Base64.DEFAULT).toRequestBody(contentType?.toMediaTypeOrNull())
+                    m == "POST" || m == "PUT" || m == "PATCH" -> ByteArray(0).toRequestBody(contentType?.toMediaTypeOrNull())
+                    else -> null
+                }
+                b.method(m, body)
+                http.newCall(b.build()).execute().use { r ->
+                    reply.put("status", r.code).put("body", Base64.encodeToString(r.body?.bytes() ?: ByteArray(0), Base64.NO_WRAP))
+                }
+            } catch (e: Exception) { reply.put("error", e.message ?: e.javaClass.simpleName) }
+            view.post { view.evaluateJavascript("window.dispatchEvent(new CustomEvent('turbokeep-request',{detail:$reply}))", null) }
+        }.start()
+    }
+    private val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(120, TimeUnit.SECONDS).build()
+
     @JavascriptInterface fun refreshWidgets() { TasksWidgetProvider.refreshAll(context) }
     /** Settings > This app > Android app: the widget's settings window, opened from the page (it has no widget to belong to, so it holds the shared choices: text size, spacing, buttons, order) */
     @JavascriptInterface fun openWidgetSettings() { main.post { context.startActivity(Intent(context, WidgetSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
