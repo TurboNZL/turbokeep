@@ -1,6 +1,6 @@
 # Android app
 
-TurboKeep for Android is a small app that shows the TurboKeep page full screen, plus a **home-screen widget** and a **share target**. The page is bundled in the app (like TurboMusic's) and talks to **your server** with a token of its own: you sign in the normal way, once, and the app keeps the token. Updating the app brings the newest page; the server and the app should be kept on the same release.
+TurboKeep for Android is a small app that shows the TurboKeep page full screen, plus a **home-screen widget** and a **share target**. The page is bundled in the app (like TurboMusic's) and talks to **your server** with a token of its own: you sign in the normal way, once, and the app keeps the token. Updating the app brings the newest page; **update the server first (or together with the app)**: the app's page is not on the server's address, so signing in and saving need a server that allows it, and an older server makes them fail with “Cannot reach the server”.
 
 ## Install
 1. On the phone, open the repository's **Releases** page on GitHub and download the newest `turbokeep-<version>-android.apk`.
