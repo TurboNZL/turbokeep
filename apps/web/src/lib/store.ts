@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS, loadSettings, saveSettings, type DeviceSettings } fro
 import { takeMeta } from './prefetch.ts';
 import { applyAppearance } from './appearance.ts';
 import { tasksInTags } from './views.ts';
-import { ownCache, recall, remember, setCacheLevel } from './cache.ts';
+import { cacheLevel, ownCache, recall, remember, setCacheLevel } from './cache.ts';
 
 export interface Toast { id: number; message: string; tone?: 'bad'; action?: { label: string; run: () => void } }
 
@@ -40,6 +40,11 @@ interface State {
 
 function readOpenNote(): string | null { try { return localStorage.getItem('turbokeep.openNote'); } catch { return null; } }
 function readPages(): Record<string, { id: string | null; search: string }> { try { return JSON.parse(localStorage.getItem('turbokeep.pages') ?? '{}'); } catch { return {}; } }
+/** Who was signed in last time on this device: the page opens as that person at once (their remembered list is shown) and asks the server in the background; a refusal there shows the sign-in page. */
+function readUser(): { id: number; username: string } | null {
+  try { const u = JSON.parse(localStorage.getItem('turbokeep.user') ?? 'null'); return u && typeof u.id === 'number' && typeof u.username === 'string' && cacheLevel() !== 'off' ? u : null; } catch { return null; }
+}
+function saveUser(u: { id: number; username: string } | null) { try { if (u) localStorage.setItem('turbokeep.user', JSON.stringify(u)); else localStorage.removeItem('turbokeep.user'); } catch { /* private window */ } }
 let toastId = 0;
 
 export const useStore = create<State>((set, get) => ({
@@ -52,8 +57,8 @@ export const useStore = create<State>((set, get) => ({
     if (patch.countTasks !== undefined) void get().refreshMeta(); // the tags column counts differently now: ask again at once, no reload needed
     applyAppearance(settings);
   },
-  user: null, auth: 'loading',
-  setUser: (user) => { ownCache(user?.id ?? null); set({ user, auth: user ? 'in' : 'out' }); },
+  user: readUser(), auth: readUser() ? 'in' : 'loading', // the person who was signed in last time (the settings above are read first, so the cache level is known)
+  setUser: (user) => { ownCache(user?.id ?? null); saveUser(user); set({ user, auth: user ? 'in' : 'out' }); },
   tags: recall<TagInfo[]>('tags') ?? [],
   async refreshMeta() {
     // the prefetched answer was asked before signing in when this is a fresh sign-in: a refusal there is stale, so ask again

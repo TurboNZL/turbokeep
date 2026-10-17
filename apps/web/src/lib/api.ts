@@ -1,5 +1,6 @@
 /** The server's JSON API. Same origin, relative URLs and the session cookie, so it works behind any proxy or Cloudflare tunnel with no setup. */
 import { accessHeaders, android, saveWithApp } from './native.ts';
+import { earlyMe } from './early.ts';
 export class ApiError extends Error {
   constructor(public status: number, message: string, public body?: any) { super(message); }
 }
@@ -39,7 +40,7 @@ export interface SetupInfo { needsSetup: boolean; setupCodeRequired: boolean; al
 
 export const api = {
   setup: () => req<SetupInfo>('GET', '/api/setup'),
-  me: () => req<{ user: { id: number; username: string } }>('GET', '/api/auth/me'),
+  me: () => earlyMe<{ user: { id: number; username: string } }>() ?? req<{ user: { id: number; username: string } }>('GET', '/api/auth/me'),
   login: (username: string, password: string) => req<{ user: { id: number; username: string } }>('POST', '/api/auth/login', { username, password }),
   register: (username: string, password: string, setupCode?: string) => req<{ user: { id: number; username: string } }>('POST', '/api/auth/register', { username, password, setupCode }),
   updateInfo: () => req<ServerUpdate>('GET', '/api/admin/update'),

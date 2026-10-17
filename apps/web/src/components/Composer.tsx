@@ -90,13 +90,21 @@ export function Composer({ tag, autoFocus, onAdded, onPopup }: { tag?: string; a
   return (
     // Tab goes from the title straight to the description (the Add button is out of the tab order: Enter adds). Leaving the box adds what was typed,
     // except while a finger or the mouse is still pressing something inside it (Safari does not focus a button that is clicked, so relatedTarget is empty then)
-    <div ref={box} className="card tk-compose space-y-2 p-3"
+    <div ref={box} className="card tk-compose space-y-2 p-3 max-md:fixed max-md:inset-x-2 max-md:z-30 max-md:shadow-2xl" style={{ bottom: 'calc(var(--dock-h, 0px) + 0.5rem)' }}
       onPointerDownCapture={() => { pressing.current = true; }} onPointerUpCapture={() => window.setTimeout(() => { pressing.current = false; }, 0)}
       onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node) && !pickingRef.current && !pressing.current) void commit(); }}>
       <div className="flex items-center gap-2">
         <AutoText ref={titleEl} className="input !min-h-11 max-h-48 flex-1 resize-none !py-2.5 !text-base" aria-label="Add something" placeholder={tag ? `Add to ${tag.split('.').pop()}…` : 'Add something…'} value={title} autoFocus={autoFocus}
-          enterKeyHint="done" autoComplete="off" onChange={(e) => { const h = handoff.current; if (h) { const v = e.target.value; const added = v.startsWith(h.base) ? v.slice(h.base.length) : v; if (added) typeAhead(h.id, added); setTitle(h.base); return; } if (onPopup && !title && !text && e.target.value.trim() && !popping.current) { setTitle(e.target.value); draft.current = { title: e.target.value, text: '' }; popup(e.target.value); return; } const o = titleOverflow(e.target.value, text, e.target.selectionStart); if (o) { setTitle(o.title); setText(o.text); caret.current = o.caret; auto.current = true; } else { setTitle(e.target.value); if (popping.current) draft.current = { title: e.target.value, text: '' }; auto.current = false; } }}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void commit().then(() => titleEl.current?.focus()); } }} />
+          enterKeyHint="done" autoComplete="off" onPaste={(e) => { const t = e.clipboardData.getData('text/plain'); if (onPopup && ((!title && !text) || handoff.current) && t.trim()) { e.preventDefault(); const h = handoff.current; if (h) typeAhead(h.id, t); else popup(t); } }} onChange={(e) => { const h = handoff.current; if (h) { const v = e.target.value; const added = v.startsWith(h.base) ? v.slice(h.base.length) : v; if (added) typeAhead(h.id, added); setTitle(h.base); return; } if (onPopup && !title && !text && e.target.value.trim() && !popping.current) { setTitle(e.target.value); draft.current = { title: e.target.value, text: '' }; popup(e.target.value); return; } const o = titleOverflow(e.target.value, text, e.target.selectionStart); if (o) { setTitle(o.title); setText(o.text); caret.current = o.caret; auto.current = true; } else { setTitle(e.target.value); if (popping.current) draft.current = { title: e.target.value, text: '' }; auto.current = false; } }}
+          // With "open as you type" the box only intercepts: a printable key (or a paste) never lands in it, it goes straight to the item's own editor (a phone's on-screen keyboard
+          // sends no usable key here, so it still goes through onChange above)
+          onKeyDown={(e) => {
+            if (onPopup && ((!title && !text) || handoff.current) && !e.nativeEvent.isComposing && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key.trim() || handoff.current)) {
+              e.preventDefault();
+              const h = handoff.current; if (h) typeAhead(h.id, e.key); else popup(e.key);
+              return;
+            }
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void commit().then(() => titleEl.current?.focus()); } }} />
         <button type="button" tabIndex={-1} className="btn btn-accent !min-h-11 !px-3" aria-label="Add" title="Add (Enter)" disabled={busy || (!title.trim() && !text.trim())} onClick={() => void commit().then(() => titleEl.current?.focus())}><Plus size={18} /></button>
       </div>
       {(title || text) && <textarea ref={textEl} className="input note-text min-h-[4.5rem] w-full resize-none !py-2 text-sm" rows={Math.min(8, text.split('\n').length + 1)}
