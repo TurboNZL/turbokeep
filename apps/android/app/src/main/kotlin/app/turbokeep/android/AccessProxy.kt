@@ -1,6 +1,5 @@
 package app.turbokeep.android
 
-import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import java.io.ByteArrayInputStream
@@ -8,7 +7,9 @@ import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
 
-/** Pure decisions of [AccessProxy] (no Android classes). Same idea as TurboMusic's AccessProxy, which pairs fine behind Cloudflare Access. */
+/**
+ * Pure decisions of [AccessProxy] (JVM-testable, no Android classes).
+ */
 object AccessRoute {
     /** "scheme://host:port" of a URL, lower-cased; "" when it is not an http(s) URL. */
     fun origin(url: String): String = try {
@@ -18,36 +19,51 @@ object AccessRoute {
         if ((scheme == "http" || scheme == "https") && !u.host.isNullOrEmpty()) "$scheme://${u.host.lowercase()}:$port" else ""
     } catch (e: Exception) { "" }
 
-    /** The request is for the TurboKeep server (the only place the service token may go). */
+    /** The request is for the TurboKeep server and needs the service token added (page <img>/<audio> cannot send headers). */
     fun isServerRequest(serverUrl: String, requestUrl: String): Boolean {
         val s = origin(serverUrl)
         return s.isNotEmpty() && s == origin(requestUrl)
     }
 
-    /** Request headers worth forwarding: not the browser's own bookkeeping (cookies are added from the web view's jar, encodings are negotiated by the connection itself). */
+    /** Request headers worth forwarding: not the browser's own origin/host/cookie bookkeeping. */
     fun forwardable(headers: Map<String, String>): Map<String, String> =
-        headers.filterKeys { it.lowercase() !in setOf("host", "cookie", "connection", "accept-encoding", "if-none-match", "if-modified-since") }
+        headers.filterKeys { it.lowercase() !in setOf("host", "origin", "referer", "cookie", "connection") }
 
-    /** The upstream answer's headers as the web view should get them: no hop-by-hop headers, no cookies (set separately), no encoding/length (the body is already decoded). */
+    /** The answer to a CORS preflight, so Cloudflare Access (which refuses header-less preflights) never sees it. */
+    fun preflightHeaders(requestedHeaders: String?): Map<String, String> = mapOf(
+        "Access-Control-Allow-Origin" to "*",
+        "Access-Control-Allow-Methods" to "GET, POST, PUT, DELETE, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers" to (requestedHeaders?.takeIf { it.isNotBlank() } ?: "Authorization, Content-Type, Range"),
+        "Access-Control-Max-Age" to "86400",
+    )
+
+    /**
+     * The upstream answer's headers as the WebView should get them. The server (and Cloudflare in front of it) already send their own
+     * `Access-Control-Allow-Origin` (often in lower case), and adding ours next to it made two values, which Chromium refuses ("contains multiple
+     * values '*, *'"): every fetch() the page made through the proxy, sync included, failed. Ours replace theirs, case-insensitively. Hop-by-hop
+     * headers are dropped too, because the body is handed over already de-chunked.
+     */
     fun answerHeaders(upstream: Map<String, String>): Map<String, String> {
-        val drop = setOf("transfer-encoding", "connection", "keep-alive", "proxy-authenticate", "te", "trailer", "upgrade", "set-cookie", "content-encoding", "content-length")
-        return upstream.filterKeys { it.lowercase() !in drop }
+        val ours = corsAnswer.keys.map { it.lowercase() }.toSet()
+        val drop = setOf("transfer-encoding", "connection", "keep-alive", "proxy-authenticate", "te", "trailer", "upgrade") + ours
+        val out = LinkedHashMap<String, String>()
+        for ((k, v) in upstream) if (k.lowercase() !in drop) out[k] = v
+        out.putAll(corsAnswer)
+        return out
     }
 
-    /** "text/html; charset=utf-8" -> ("text/html", "utf-8") */
-    fun mimeAndCharset(contentType: String?): Pair<String, String?> {
-        val t = contentType ?: return "application/octet-stream" to null
-        val mime = t.substringBefore(';').trim().ifEmpty { "application/octet-stream" }
-        val charset = Regex("charset=([^;\\s]+)", RegexOption.IGNORE_CASE).find(t)?.groupValues?.get(1)?.trim('"')
-        return mime to charset
-    }
+    /** Headers added to every proxied answer so the page (http://localhost) may read it. */
+    val corsAnswer: Map<String, String> = mapOf(
+        "Access-Control-Allow-Origin" to "*",
+        "Access-Control-Expose-Headers" to "Content-Range, Accept-Ranges, Content-Length, Content-Type",
+    )
 }
 
 /**
- * The page is the server's own, and behind Cloudflare Access every request needs the service token (CF-Access-Client-Id / -Secret); a web view's page
- * requests (the page itself, scripts, styles, images, API reads) cannot send it. Here the token is added to those GET/HEAD requests natively, with the web
- * view's own cookies, and the answer's cookies (Access's CF_Authorization, the TurboKeep session) go back into the web view's jar. Requests with a body are
- * not visible here: the page adds the headers itself (`TurboKeepAndroid.accessHeaders()`). Does nothing without a token.
+ * Same as TurboMusic's AccessProxy, which pairs fine behind Cloudflare Access. The page is served from http://localhost (the web client bundled in the
+ * app) while the TurboKeep server is another origin, possibly behind Cloudflare Access. Access refuses header-less CORS preflights, so they are answered
+ * here locally, and the service token is added natively to the page's GET/HEAD requests for the server. Does nothing without a token.
+ * (Requests with a body are not visible here: the page sends the token itself on those, `TurboKeepAndroid.accessHeaders()`.)
  */
 class AccessProxy(private val prefs: ServerPrefs) {
     fun handle(request: WebResourceRequest): WebResourceResponse? {
@@ -55,8 +71,14 @@ class AccessProxy(private val prefs: ServerPrefs) {
         if (extra.isEmpty()) return null
         val url = request.url.toString()
         if (!AccessRoute.isServerRequest(prefs.serverUrl, url)) return null
-        if (request.method.uppercase() !in setOf("GET", "HEAD")) return null
-        return try { fetch(request, url, extra) } catch (e: Exception) { null } // fall back to the web view's own request
+        return try {
+            when (request.method.uppercase()) {
+                "OPTIONS" -> WebResourceResponse("text/plain", "utf-8", 204, "No Content",
+                    AccessRoute.preflightHeaders(request.requestHeaders["Access-Control-Request-Headers"]), ByteArrayInputStream(ByteArray(0)))
+                "GET", "HEAD" -> fetch(request, url, extra)
+                else -> null
+            }
+        } catch (e: Exception) { null } // fall back to Chromium's own request (the page's own headers apply)
     }
 
     private fun fetch(request: WebResourceRequest, url: String, extra: Map<String, String>): WebResourceResponse? {
@@ -66,16 +88,13 @@ class AccessProxy(private val prefs: ServerPrefs) {
         c.readTimeout = 60_000
         c.instanceFollowRedirects = true
         AccessRoute.forwardable(request.requestHeaders).forEach { (k, v) -> c.setRequestProperty(k, v) }
-        val cookies = CookieManager.getInstance().getCookie(url)
-        if (!cookies.isNullOrEmpty()) c.setRequestProperty("Cookie", cookies)
         extra.forEach { (k, v) -> c.setRequestProperty(k, v) }
         val code = c.responseCode
-        if (code in 300..399) { c.disconnect(); return null } // a web view cannot be handed a redirect from here
-        c.headerFields["Set-Cookie"]?.forEach { CookieManager.getInstance().setCookie(url, it) }
         val upstream = LinkedHashMap<String, String>()
         for ((k, v) in c.headerFields) if (k != null && v.isNotEmpty()) upstream[k] = v.last()
-        val (mime, charset) = AccessRoute.mimeAndCharset(c.contentType)
+        val headers = AccessRoute.answerHeaders(upstream)
+        val mime = (c.contentType ?: "application/octet-stream").substringBefore(';').trim()
         val body = if (code >= 400) c.errorStream else c.inputStream
-        return WebResourceResponse(mime, charset, code, c.responseMessage?.takeIf { it.isNotBlank() } ?: if (code == 206) "Partial Content" else "OK", AccessRoute.answerHeaders(upstream), body ?: ByteArrayInputStream(ByteArray(0)))
+        return WebResourceResponse(mime, null, code, c.responseMessage?.takeIf { it.isNotBlank() } ?: if (code == 206) "Partial Content" else "OK", headers, body ?: ByteArrayInputStream(ByteArray(0)))
     }
 }

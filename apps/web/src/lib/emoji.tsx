@@ -1,12 +1,41 @@
+import { useEffect, useState } from 'react';
 import { cn } from './cn.ts';
+import { android, appHeaders, serverUrl } from './native.ts';
 
 /** An emoji you imported is kept by the tag as `:<12 hex>:`; anything else is a normal emoji character. */
 export const isCustomEmoji = (e: string) => /^:[0-9a-f]{12}:$/.test(e);
 export const emojiUrl = (e: string) => `/api/emoji/${e.slice(1, -1)}`;
 
-/** An emoji, either the character or the picture you imported (the browser keeps the picture for a year: its address never changes). */
+/**
+ * Inside the Android app an `<img>` cannot carry the bearer token (and the page is not the server's origin), so the picture is fetched with it once and kept as a blob
+ * address for as long as the page lives. A browser just uses the address (it keeps the picture for a year: the address never changes).
+ */
+const fetched = new Map<string, Promise<string>>();
+function appPicture(id: string): Promise<string> {
+  let p = fetched.get(id);
+  if (!p) {
+    p = fetch(serverUrl(`/api/emoji/${id}`), { credentials: 'omit', headers: appHeaders() }).then(async (r) => { if (!r.ok) throw new Error(String(r.status)); return URL.createObjectURL(await r.blob()); });
+    p.catch(() => fetched.delete(id)); // try again the next time it is drawn
+    fetched.set(id, p);
+  }
+  return p;
+}
+function useEmojiSrc(value: string): string | undefined {
+  const inApp = !!android() && isCustomEmoji(value);
+  const [src, setSrc] = useState<string>();
+  useEffect(() => {
+    if (!inApp) return;
+    let live = true;
+    appPicture(value.slice(1, -1)).then((u) => { if (live) setSrc(u); }, () => {});
+    return () => { live = false; };
+  }, [inApp, value]);
+  return inApp ? src : isCustomEmoji(value) ? emojiUrl(value) : undefined;
+}
+
+/** An emoji, either the character or the picture you imported. */
 export function Emoji({ value, className }: { value: string; className?: string }) {
-  if (isCustomEmoji(value)) return <img src={emojiUrl(value)} alt="" width={20} height={20} className={cn('inline-block h-[1.15em] w-[1.15em] shrink-0 object-contain align-[-0.2em]', className)} draggable={false} />;
+  const src = useEmojiSrc(value);
+  if (isCustomEmoji(value)) return <img src={src} alt="" width={20} height={20} className={cn('inline-block h-[1.15em] w-[1.15em] shrink-0 object-contain align-[-0.2em]', className)} draggable={false} />;
   return <span aria-hidden className={className}>{value}</span>;
 }
 

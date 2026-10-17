@@ -36,30 +36,9 @@ object KeepApi {
         }
         b.method(method, body)
         client.newCall(b.build()).execute().use { r ->
-            // a token the server no longer knows (revoked, or a new server): forget it, the web page makes a fresh one the next time it is opened
+            // a token the server no longer knows (revoked, or a new server): forget it, the page asks for a sign-in the next time it is opened and hands over a fresh one
             if (r.code == 401) prefs.token = ""
             return Result(r.code, r.body?.string() ?: "")
         }
-    }
-
-    /**
-     * Is there a TurboKeep at this address? Used by the setup screen, before anything is saved. Null = yes; otherwise what went wrong, in words. Behind Cloudflare
-     * Access the check needs the service token too (without it Access answers with its sign-in page, which is what made pairing fail there).
-     */
-    fun probe(url: String, cfId: String = "", cfSecret: String = ""): String? {
-        return try {
-            val b = Request.Builder().url("$url/api/health")
-            if (cfId.isNotEmpty() && cfSecret.isNotEmpty()) b.header("CF-Access-Client-Id", cfId).header("CF-Access-Client-Secret", cfSecret)
-            client.newCall(b.build()).execute().use { r ->
-                val t = r.body?.string() ?: ""
-                val viaAccess = r.request.url.host.endsWith("cloudflareaccess.com") || r.header("cf-access-domain") != null || t.contains("cloudflareaccess", true) || r.code == 403 || r.code == 401
-                when {
-                    r.isSuccessful && t.contains("\"ok\":true") -> null
-                    viaAccess && (cfId.isEmpty() || cfSecret.isEmpty()) -> "Cloudflare Access answered instead of TurboKeep. Fill in the service token (Client ID and Secret) or use a pairing code that includes it."
-                    viaAccess -> "Cloudflare Access sent the sign-in page instead of accepting the service token (HTTP ${r.code}). The credentials may be right but the application for this address has no policy with the action Service Auth that includes this token (an Allow policy never accepts a token; TurboMusic's application is a different one). Add that policy in Zero Trust > Access > Applications > this application > Policies, check the Client ID ends in .access, and try again."
-                    else -> "No TurboKeep answered at $url (HTTP ${r.code}). Check the address, the port, and that the phone can reach it (a home address only works on your home network)."
-                }
-            }
-        } catch (e: Exception) { "Could not reach $url: ${e.message ?: e.javaClass.simpleName}. Check the address and that the phone can reach it." }
     }
 }

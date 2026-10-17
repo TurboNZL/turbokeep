@@ -3,9 +3,9 @@ package app.turbokeep.android
 import android.content.Context
 
 /**
- * What the native side (the widget, quick add, updates) needs to know. The server address is typed in SetupActivity; the token is made by the
- * web page after you sign in (it asks the server for an API token and hands it over through the bridge), so the widget can talk to the server
- * without the web page being open.
+ * What the native side (the widget, quick add, updates) needs to know. The web page keeps the server address, the API token and the Cloudflare
+ * Access service token in its own settings and hands them over through the bridge (setServer / setAccess, as in TurboMusic), so the widget can talk to
+ * the server without the web page being open.
  */
 class ServerPrefs(context: Context) {
     private val p = context.applicationContext.getSharedPreferences("turbokeep", Context.MODE_PRIVATE)

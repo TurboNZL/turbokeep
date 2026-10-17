@@ -6,27 +6,35 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AccessRouteTest {
-    @Test fun theTokenOnlyGoesToTheServersOwnOrigin() {
+    @Test fun originNormalisesDefaultPorts() {
+        assertEquals("https://keep.example.com:443", AccessRoute.origin("https://Keep.Example.com/api/notes"))
+        assertEquals("http://192.168.1.5:47901", AccessRoute.origin("http://192.168.1.5:47901"))
+        assertEquals("", AccessRoute.origin("not a url"))
+        assertEquals("", AccessRoute.origin("ftp://x.y/z"))
+    }
+
+    @Test fun onlyTheServerIsProxied() {
         assertTrue(AccessRoute.isServerRequest("https://keep.example.com", "https://keep.example.com/api/notes"))
-        assertTrue(AccessRoute.isServerRequest("http://192.168.1.20:47901", "http://192.168.1.20:47901/assets/a.js"))
-        assertFalse(AccessRoute.isServerRequest("https://keep.example.com", "https://other.example.com/api/notes"))
-        assertFalse(AccessRoute.isServerRequest("https://keep.example.com", "http://keep.example.com/api/notes")) // other scheme/port
-        assertFalse(AccessRoute.isServerRequest("", "https://keep.example.com/"))
+        assertFalse(AccessRoute.isServerRequest("https://keep.example.com", "https://other.example.com/x"))
+        assertFalse(AccessRoute.isServerRequest("", "https://keep.example.com/x"))
+        assertFalse(AccessRoute.isServerRequest("http://localhost", "https://appassets.example/x"))
     }
 
-    @Test fun cookiesAndEncodingsAreLeftToTheConnection() {
-        val out = AccessRoute.forwardable(mapOf("Cookie" to "a=b", "Accept-Encoding" to "gzip", "If-None-Match" to "x", "Accept" to "text/html", "Range" to "bytes=0-9"))
-        assertEquals(setOf("Accept", "Range"), out.keys)
+    @Test fun browserBookkeepingIsNotForwarded() {
+        val out = AccessRoute.forwardable(mapOf("Range" to "bytes=0-", "Origin" to "http://localhost", "Cookie" to "a=b", "Authorization" to "Bearer t"))
+        assertEquals(setOf("Range", "Authorization"), out.keys)
     }
 
-    @Test fun answersLoseTheirCookiesAndEncoding() {
-        val out = AccessRoute.answerHeaders(mapOf("Set-Cookie" to "x=1", "Content-Encoding" to "gzip", "Content-Length" to "9", "Content-Type" to "text/html", "Cache-Control" to "no-store"))
-        assertEquals(setOf("Content-Type", "Cache-Control"), out.keys)
+    @Test fun preflightEchoesTheRequestedHeaders() {
+        assertEquals("range, cf-access-client-id", AccessRoute.preflightHeaders("range, cf-access-client-id")["Access-Control-Allow-Headers"])
+        assertEquals("*", AccessRoute.preflightHeaders(null)["Access-Control-Allow-Origin"])
     }
 
-    @Test fun splitsContentType() {
-        assertEquals("text/html" to "utf-8", AccessRoute.mimeAndCharset("text/html; charset=utf-8"))
-        assertEquals("application/json" to null, AccessRoute.mimeAndCharset("application/json"))
-        assertEquals("application/octet-stream" to null, AccessRoute.mimeAndCharset(null))
+    @Test fun answerHeadersNeverCarryTwoAllowOrigins() {
+        val out = AccessRoute.answerHeaders(mapOf("access-control-allow-origin" to "*", "Access-Control-Expose-Headers" to "X", "Transfer-Encoding" to "chunked", "Content-Type" to "application/json"))
+        assertEquals(1, out.keys.count { it.equals("Access-Control-Allow-Origin", ignoreCase = true) })
+        assertEquals(1, out.keys.count { it.equals("Access-Control-Expose-Headers", ignoreCase = true) })
+        assertEquals("application/json", out["Content-Type"])
+        assertEquals(false, out.keys.any { it.equals("Transfer-Encoding", ignoreCase = true) })
     }
 }

@@ -17,7 +17,8 @@
     <script>
       (function () {
         var p = location.pathname;
-        if ((p !== '/' && p.indexOf('/home') !== 0) || location.search) return;
+        // inside the Android app the page is bundled and the server is another address with a token: the page code asks by itself
+        if (window.TurboKeepAndroid || (p !== '/' && p.indexOf('/home') !== 0) || location.search) return;
         function get(u) { return fetch(u, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); }); }
         var e = (window.__early = { notes: get('/api/notes?excerpt=1&list=1'), tags: get('/api/tags'), me: get('/api/auth/me') });
         for (var k in e) e[k].catch(function () {});

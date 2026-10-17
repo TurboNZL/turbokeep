@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, type SetupInfo } from '../lib/api.ts';
 import { useStore } from '../lib/store.ts';
+import { android } from '../lib/native.ts';
+import { ServerConnectCard } from '../components/ServerConnectCard.tsx';
 
 /** Sign in, or (first run, or when the server allows sign-ups) create an account. */
 export function LoginPage() {
@@ -21,7 +23,7 @@ export function LoginPage() {
   }
   const canRegister = info?.needsSetup || info?.allowSignup;
   return (
-    <div className="grid min-h-full place-items-center p-4">
+    <div className="grid min-h-full place-content-center justify-items-center gap-3 p-4">
       <form onSubmit={submit} className="card bt-panel w-full max-w-sm space-y-4 p-6">
         <div className="flex items-center gap-3"><img src="/icon.svg" alt="" width={36} height={36} /><div><h1 className="text-lg font-bold">TurboKeep</h1><p className="text-xs text-muted">{mode === 'register' ? (info?.needsSetup ? 'Create the first account' : 'Create an account') : 'Sign in'}</p></div></div>
         <label className="block space-y-1 text-sm">Username<input className="input" autoComplete="username" autoFocus required value={username} onChange={(e) => setUsername(e.target.value)} /></label>
@@ -31,6 +33,7 @@ export function LoginPage() {
         <button className="btn btn-accent w-full" disabled={busy || !info}>{mode === 'login' ? 'Sign in' : 'Create account'}</button>
         {canRegister && !info?.needsSetup && <button type="button" className="btn btn-ghost w-full text-sm" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>{mode === 'login' ? 'Create an account' : 'I already have an account'}</button>}
       </form>
+      {android() && <details className="mt-3 w-full max-w-sm text-sm"><summary className="cursor-pointer text-center text-muted">Server and Cloudflare Access</summary><div className="mt-2"><ServerConnectCard /></div></details>}
     </div>
   );
 }

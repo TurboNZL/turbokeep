@@ -19,11 +19,10 @@ export function AndroidCard() {
     : u.status === 'none' ? (u.message ?? 'You have the newest version.') : u.status === 'error' ? `Could not check: ${u.message ?? 'unknown error'}` : '';
   return (
     <Section title="Android app">
-      <p className="text-sm">Version <span className="font-mono">{info.version}</span>. Server: <span className="font-mono break-all">{info.serverUrl}</span></p>
+      <p className="text-sm">Version <span className="font-mono">{info.version}</span>.</p>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <button className="btn" onClick={() => bridge.checkUpdate()} disabled={u.status === 'checking' || u.status === 'downloading'}><RefreshCw size={15} />Check for updates</button>
         {u.status === 'ready' && <button className="btn btn-accent" onClick={() => bridge.installUpdate()}><Download size={15} />Install {u.version}</button>}
-        <button className="btn btn-ghost" onClick={() => bridge.changeServer()}>Change server</button>
         <button className="btn" onClick={() => bridge.openWidgetSettings()}><Settings2 size={15} />Widget settings</button>
         {text && <span className="text-muted" aria-live="polite">{text}</span>}
       </div>

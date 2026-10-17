@@ -4,6 +4,8 @@ import { AppearanceLayout, WallpaperCard } from '../components/AppearanceCard.ts
 import { Select } from '../components/Select.tsx';
 import { AndroidCard } from '../components/AndroidCard.tsx';
 import { AccessCard } from '../components/AccessCard.tsx';
+import { ServerConnectCard } from '../components/ServerConnectCard.tsx';
+import { android } from '../lib/native.ts';
 import { TagManager } from '../components/TagManager.tsx';
 import { PairPhoneCard } from '../components/PairPhoneCard.tsx';
 import { ServerUpdateCard } from '../components/ServerUpdate.tsx';
@@ -64,7 +66,7 @@ export function SettingsPage() {
           <p className="text-sm"><a className="underline" href="https://github.com/TurboNZL/turbokeep/releases" target="_blank" rel="noreferrer noopener">Releases</a></p>
         </Section>
         <AndroidCard />
-        <AccessCard />
+        {android() ? <ServerConnectCard /> : <AccessCard />}
         <PairPhoneCard />
         <ServerUpdateCard />
         </>)}
