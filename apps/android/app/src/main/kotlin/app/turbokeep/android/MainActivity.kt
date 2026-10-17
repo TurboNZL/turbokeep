@@ -66,7 +66,7 @@ class MainActivity : AppCompatActivity() {
         }
         web.setBackgroundColor(0xFF0B0B10.toInt())
         CookieManager.getInstance().setAcceptCookie(true)
-        web.addJavascriptInterface(TurboKeepBridge(this, web), "TurboKeepAndroid")
+        web.addJavascriptInterface(TurboKeepBridge(this), "TurboKeepAndroid")
 
         val accessProxy = AccessProxy(ServerPrefs(this))
         val loader = WebViewAssetLoader.Builder().setDomain(HOST).setHttpAllowed(true).addPathHandler("/", SpaAssets(this)).build()
