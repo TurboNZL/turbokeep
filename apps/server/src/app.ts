@@ -18,6 +18,9 @@ const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js
 
 const int = (v: string | undefined) => { const n = Number(v); return Number.isInteger(n) && n > 0 ? n : undefined; };
 const USERNAME = /^[A-Za-z0-9_.-]{2,40}$/;
+/** The Android app's web view serves the bundled client from here. */
+const CORS_ORIGINS = ['http://localhost'];
+const CORS_HEADERS = 'Authorization, Content-Type, Range, CF-Access-Client-Id, CF-Access-Client-Secret';
 
 export function createApp(db: DB, cfg: Config, setup: { code: string | null } = { code: null }, updater?: Updater) {
   const app = new Hono<Env>();
@@ -32,6 +35,19 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
     c.header('Referrer-Policy', 'same-origin');
     c.header('X-Frame-Options', 'DENY');
     if (c.req.path.startsWith('/api/') && !c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'no-store'); // an emoji picture sets its own
+  });
+
+  // The Android app serves the web client from http://localhost and talks to this server across origins (as TurboMusic's does), always with a bearer token.
+  // CORS is for those pages only (never '*'; no cookies): the origins in TURBOKEEP_ORIGINS and http://localhost. A preflight carries neither the token nor the
+  // Cloudflare Access headers, so it is answered before the sign-in check.
+  const corsOrigins = [...CORS_ORIGINS, ...cfg.origins];
+  app.use('/api/*', async (c, next) => {
+    const origin = c.req.header('origin');
+    const allowed = !!origin && corsOrigins.includes(origin);
+    if (allowed) { c.header('Access-Control-Allow-Origin', origin!); c.header('Vary', 'Origin'); c.header('Access-Control-Expose-Headers', 'Content-Disposition, X-Not-Exported'); }
+    if (c.req.method === 'OPTIONS' && allowed)
+      return c.body(null, 204, { 'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS', 'Access-Control-Allow-Headers': CORS_HEADERS, 'Access-Control-Max-Age': '86400' });
+    await next();
   });
 
   app.onError((e, c) => {
@@ -49,6 +65,13 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
     setCookie(c, COOKIE, secret, { httpOnly: true, sameSite: 'Lax', secure: isHttps(c, cfg), path: '/', maxAge: cfg.sessionDays * 86400 });
   };
 
+  /** A browser gets the cookie. An app that sends `device` (the Android app's page on http://localhost, where a cookie of this site is never sent) gets an API token of its own instead, named after it and revocable under Account > API tokens. */
+  const signedIn = (c: any, userId: number, device: unknown, user: { id: number; username: string }, status: 200 | 201 = 200) => {
+    if (typeof device === 'string' && device.trim()) return c.json({ user, token: createSession(db, userId, 'api', device.trim().slice(0, 60), null).secret }, status);
+    startSession(c, userId);
+    return c.json({ user }, status);
+  };
+
   app.post('/api/auth/register', async (c) => {
     const b = await c.req.json().catch(() => ({}));
     const first = userCount() === 0;
@@ -60,8 +83,7 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
     if (get(db, 'select 1 x from users where username = ?', username)) throw new S.HttpError(409, 'That username is taken');
     const id = S.createUser(db, username, hashPassword(password));
     if (first) setup.code = null;
-    startSession(c, id);
-    return c.json({ user: { id, username } }, 201);
+    return signedIn(c, id, b.device, { id, username }, 201);
   });
 
   app.post('/api/auth/login', async (c) => {
@@ -73,8 +95,7 @@ export function createApp(db: DB, cfg: Config, setup: { code: string | null } = 
     const ok = verifyPassword(String(b.password ?? ''), u?.password_hash ?? 'scrypt$AAAAAAAAAAAAAAAAAAAAAA==$' + 'A'.repeat(86) + '==') && !!u;
     if (!ok) { limiter.fail(ip); throw new S.HttpError(401, 'Wrong username or password'); }
     limiter.clear(ip);
-    startSession(c, u!.id);
-    return c.json({ user: { id: u!.id, username: u!.username } });
+    return signedIn(c, u!.id, b.device, { id: u!.id, username: u!.username });
   });
 
   // ---- signed in ----

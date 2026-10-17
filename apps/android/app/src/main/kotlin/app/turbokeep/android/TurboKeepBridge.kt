@@ -29,6 +29,11 @@ class TurboKeepBridge(private val context: Context, private val changeServer: ()
     /** the Cloudflare Access service token's headers as a JSON object ({} when there is none): the page adds them to the requests it makes itself (those with a body cannot be seen by the app) */
     @JavascriptInterface fun accessHeaders(): String = JSONObject(prefs.accessHeaders()).toString()
     @JavascriptInterface fun hasToken(): Boolean = prefs.token.isNotEmpty()
+    /** the server's address and this phone's API token: the bundled page talks to the server itself with them (like TurboMusic's setServer, the other way round: the address is typed in SetupActivity) */
+    @JavascriptInterface fun serverUrl(): String = prefs.serverUrl
+    @JavascriptInterface fun token(): String = prefs.token
+    /** this app adds the service token to the page's own GET requests for the server (AccessProxy), so images load without the page fetching them */
+    @JavascriptInterface fun accessInjected(): Boolean = true
     @JavascriptInterface fun refreshWidgets() { TasksWidgetProvider.refreshAll(context) }
     /** Settings > This app > Android app: the widget's settings window, opened from the page (it has no widget to belong to, so it holds the shared choices: text size, spacing, buttons, order) */
     @JavascriptInterface fun openWidgetSettings() { main.post { context.startActivity(Intent(context, WidgetSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }

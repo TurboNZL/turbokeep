@@ -34,4 +34,4 @@ curl https://keep.example.com/api/notes \
   -H "CF-Access-Client-Id: <id>.access" -H "CF-Access-Client-Secret: <secret>" \
   -H "Authorization: Bearer tk_..."
 ```
-The web page needs no Access settings: it is served from the same address as the API, so the browser's Access cookie covers every request. The **Android app** is not a browser tab, so with Access in front it needs the service token's Client ID and Secret (Settings > Server in the app).
+In a browser the web page needs no Access settings: it is served from the same address as the API, so the browser's Access cookie covers every request. The **Android app** is not a browser tab (its page is bundled and calls your address like any other client, exactly as TurboMusic's does), so with Access in front it needs the service token's Client ID and Secret (the setup screen, or in a pairing code). The Access application needs a policy with the action **Service Auth** that includes the token.

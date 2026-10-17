@@ -54,6 +54,31 @@ describe('accounts', () => {
     expect((await json('POST', '/api/auth/login', { username: 'luka', password: 'correct horse battery' }, h)).status).toBe(429);
     expect((await json('POST', '/api/auth/login', { username: 'luka', password: 'correct horse battery' }, { 'cf-connecting-ip': '203.0.113.10' })).status).toBe(200);
   });
+  it('the Android app\'s page (http://localhost) signs in for a token, not a cookie, and may call the API with it across origins', async () => {
+    cookie = '';
+    const app_ = { origin: 'http://localhost' };
+    // a preflight carries no token: answered before the sign-in check, for that origin only
+    const pre = await call('OPTIONS', '/api/notes', undefined, { ...app_, 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization,cf-access-client-id' });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get('access-control-allow-origin')).toBe('http://localhost');
+    expect(pre.headers.get('access-control-allow-headers')).toMatch(/Authorization/i);
+    expect(pre.headers.get('access-control-allow-headers')).toMatch(/CF-Access-Client-Id/i);
+    const other = await call('OPTIONS', '/api/notes', undefined, { origin: 'https://evil.example' });
+    expect(other.headers.get('access-control-allow-origin')).toBeNull();
+    // `device` asks for a token: no cookie is set, and the token works as a bearer from that origin (a cross-site write needs no same-site check)
+    const login = await call('POST', '/api/auth/login', { username: 'luka', password: 'correct horse battery', device: 'Android app' }, app_);
+    expect(login.status).toBe(200);
+    expect(login.headers.get('set-cookie')).toBeNull();
+    expect(login.headers.get('access-control-allow-origin')).toBe('http://localhost');
+    const { token, user } = await login.json() as any;
+    expect(user.username).toBe('luka');
+    expect(token).toMatch(/^tk_/);
+    const bearer = { ...app_, authorization: `Bearer ${token}`, 'sec-fetch-site': 'cross-site' };
+    expect((await json('POST', '/api/notes', { title: 'from the app' }, bearer)).status).toBe(201);
+    expect((await json('GET', '/api/auth/me', undefined, bearer)).body.user.username).toBe('luka');
+    // and it is listed as a token of its own, which can be revoked
+    expect((await json('GET', '/api/tokens', undefined, bearer)).body.some((t: any) => t.name === 'Android app')).toBe(true);
+  });
   it('sets a Secure cookie when the tunnel says https, and refuses cross-site writes', async () => {
     cookie = '';
     const r = await call('POST', '/api/auth/login', { username: 'luka', password: 'correct horse battery' }, { 'x-forwarded-proto': 'https' });

@@ -23,12 +23,14 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.webkit.WebViewAssetLoader
 import app.turbokeep.android.update.AppUpdater
 
 /**
- * Shows your TurboKeep server's page full screen. Because the page is the server's own, it is always the version that matches the server and signs
- * in with the normal cookie; this class supplies what a browser tab cannot: the server address screen, file pick for imports, saving exports,
- * dialogs, the token for the widget, and updating the app.
+ * Shows the web client (bundled in the app's assets and served from http://localhost, like TurboMusic's) full screen. The page talks to your TurboKeep
+ * server across origins with a bearer token (made when you sign in, or taken from a pairing code), and behind Cloudflare Access with the service token
+ * (AccessProxy). This class supplies what a browser tab cannot: the server address screen, file pick for imports, saving exports, dialogs, the token
+ * for the widget, and updating the app.
  */
 class MainActivity : AppCompatActivity() {
     private lateinit var web: WebView
@@ -73,13 +75,15 @@ class MainActivity : AppCompatActivity() {
         web.addJavascriptInterface(TurboKeepBridge(this) { startSetup() }, "TurboKeepAndroid")
 
         val accessProxy = AccessProxy(ServerPrefs(this))
+        val loader = WebViewAssetLoader.Builder().setDomain(HOST).setHttpAllowed(true).addPathHandler("/", SpaAssets(this)).build()
         web.webViewClient = object : WebViewClient() {
-            // behind Cloudflare Access the page's own GET requests get the service token here (see AccessProxy); without a token nothing changes
-            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? = accessProxy.handle(request)
-            // Everything stays in the app (a Cloudflare Access sign-in hops between several addresses); only links that are not web pages go out
+            // the app's own pages are answered here; requests for the TurboKeep server go to it through Chromium's own network stack, and behind Cloudflare
+            // Access they get the service token added (AccessProxy, as in TurboMusic); without a token nothing changes
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
+                loader.shouldInterceptRequest(request.url) ?: accessProxy.handle(request)
+            // the page is only ever http://localhost; every other link goes to the phone's browser
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val scheme = request.url.scheme ?: return false
-                if (scheme == "http" || scheme == "https") return false
+                if (request.url.host == HOST) return false
                 runCatching { startActivity(Intent(Intent.ACTION_VIEW, request.url)) }
                 return true
             }
@@ -131,10 +135,9 @@ class MainActivity : AppCompatActivity() {
     private fun startSetup() = setup.launch(Intent(this, SetupActivity::class.java))
 
     private fun load(path: String?) {
-        val base = ServerPrefs(this).serverUrl
-        if (base.isEmpty()) return
-        // behind Cloudflare Access the service token goes with the page request; Access answers with its own cookie, which the page's later requests carry
-        web.loadUrl(base + (path ?: "/"), ServerPrefs(this).accessHeaders())
+        if (!ServerPrefs(this).configured) return
+        // the page is the bundled one; it asks the bridge where the server is and which token to use
+        web.loadUrl("http://$HOST" + (path ?: "/"))
     }
 
     // a tap on a task in the widget while the app is already open
@@ -163,5 +166,44 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    companion object { const val EXTRA_PATH = "path" }
+    /**
+     * Serves the bundled web client. The stock AssetsPathHandler answers a missing file (and the bare "/") with an empty response, which the WebView
+     * reports as ERR_INVALID_RESPONSE, so "/" and every route of the app (/home/...) get index.html. Paths under /api/ are never the app.
+     */
+    private class SpaAssets(private val context: android.content.Context) : WebViewAssetLoader.PathHandler {
+        override fun handle(path: String): WebResourceResponse? {
+            val name = path.trimStart('/').ifEmpty { "index.html" }
+            if (name.startsWith("api/"))
+                return WebResourceResponse("application/json", "utf-8", 404, "Not Found", emptyMap(), java.io.ByteArrayInputStream("{\"error\":\"No server address set\"}".toByteArray()))
+            val stream = try { context.assets.open(name) } catch (e: java.io.IOException) { null }
+            if (stream != null) return WebResourceResponse(mime(name), null, stream)
+            if (name.substringAfterLast('/').contains('.'))
+                return WebResourceResponse("text/plain", "utf-8", 404, "Not Found", emptyMap(), java.io.ByteArrayInputStream(ByteArray(0)))
+            return WebResourceResponse("text/html", "utf-8", context.assets.open("index.html"))
+        }
+
+        private fun mime(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+            "html" -> "text/html"
+            "js", "mjs" -> "text/javascript"
+            "css" -> "text/css"
+            "json" -> "application/json"
+            "webmanifest" -> "application/manifest+json"
+            "svg" -> "image/svg+xml"
+            "png" -> "image/png"
+            "jpg", "jpeg" -> "image/jpeg"
+            "webp" -> "image/webp"
+            "ico" -> "image/x-icon"
+            "woff2" -> "font/woff2"
+            "woff" -> "font/woff"
+            "ttf" -> "font/ttf"
+            "wasm" -> "application/wasm"
+            else -> "application/octet-stream"
+        }
+    }
+
+    companion object {
+        const val EXTRA_PATH = "path"
+        /** The page is served from http://localhost (answered by the asset loader, never sent anywhere): a secure context, and no mixed-content rules, so a plain-http home server is reachable. */
+        const val HOST = "localhost"
+    }
 }

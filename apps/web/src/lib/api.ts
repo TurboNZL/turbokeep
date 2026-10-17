@@ -1,5 +1,9 @@
-/** The server's JSON API. Same origin, relative URLs and the session cookie, so it works behind any proxy or Cloudflare tunnel with no setup. */
-import { accessHeaders, android, saveWithApp } from './native.ts';
+/**
+ * The server's JSON API. In a browser: same origin, relative URLs and the session cookie, so it works behind any proxy or Cloudflare tunnel with no setup.
+ * In the Android app the page is bundled (http://localhost) and the server is another origin: its address in front, a bearer token and, behind Cloudflare
+ * Access, the service token on every request (the same arrangement as TurboMusic's app).
+ */
+import { android, appHeaders, saveWithApp, serverUrl } from './native.ts';
 import { earlyMe } from './early.ts';
 export class ApiError extends Error {
   constructor(public status: number, message: string, public body?: any) { super(message); }
@@ -14,7 +18,7 @@ const created = (id: string) => makes.get(id)?.done ?? Promise.resolve();
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, { method, credentials: 'same-origin', headers: { ...accessHeaders(), ...(body !== undefined && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}) }, body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body) });
+    res = await fetch(serverUrl(path), { method, credentials: android() ? 'omit' : 'same-origin', headers: { ...appHeaders(), ...(body !== undefined && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}) }, body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body) });
   } catch { throw new ApiError(0, 'Cannot reach the server'); }
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, data?.error ?? `Server said ${res.status}`, data);
@@ -38,14 +42,23 @@ export interface Report { warnings: string[]; dry: boolean; [k: string]: number 
 export interface ServerUpdate { available: boolean; restarts: boolean; status: 'idle' | 'running' | 'done' | 'error'; log: string[]; startedAt: number | null; restarting: boolean }
 export interface SetupInfo { needsSetup: boolean; setupCodeRequired: boolean; allowSignup: boolean; version: string }
 
+type SignedIn = { user: { id: number; username: string }; token?: string };
+const deviceName = () => (android() ? { device: 'Android app' } : {});
+async function signedIn(p: Promise<SignedIn>): Promise<{ user: { id: number; username: string } }> {
+  const r = await p;
+  if (r.token) android()?.saveToken(r.token);
+  return { user: r.user };
+}
+
 export const api = {
   setup: () => req<SetupInfo>('GET', '/api/setup'),
   me: () => earlyMe<{ user: { id: number; username: string } }>() ?? req<{ user: { id: number; username: string } }>('GET', '/api/auth/me'),
-  login: (username: string, password: string) => req<{ user: { id: number; username: string } }>('POST', '/api/auth/login', { username, password }),
-  register: (username: string, password: string, setupCode?: string) => req<{ user: { id: number; username: string } }>('POST', '/api/auth/register', { username, password, setupCode }),
+  // inside the app the cookie of the server never reaches the page, so signing in asks for a token (`device`) and hands it to the app, which the widget uses too
+  login: (username: string, password: string) => signedIn(req<SignedIn>('POST', '/api/auth/login', { username, password, ...deviceName() })),
+  register: (username: string, password: string, setupCode?: string) => signedIn(req<SignedIn>('POST', '/api/auth/register', { username, password, setupCode, ...deviceName() })),
   updateInfo: () => req<ServerUpdate>('GET', '/api/admin/update'),
   startUpdate: () => req<unknown>('POST', '/api/admin/update'),
-  logout: () => req<unknown>('POST', '/api/auth/logout'),
+  logout: async () => { try { return await req<unknown>('POST', '/api/auth/logout'); } finally { android()?.saveToken(''); } },
   changePassword: (current: string, next: string) => req<unknown>('POST', '/api/auth/password', { current, next }),
   tokens: () => req<{ id: string; name: string; createdAt: string; lastUsed: string | null }[]>('GET', '/api/tokens'),
   createToken: (name: string) => req<{ token: string }>('POST', '/api/tokens', { name }),
@@ -93,7 +106,7 @@ export const api = {
 
 /** Saves a file the server generates (the export zips). A plain link would also work, but this reports errors in the page. */
 export async function download(path: string, fallbackName: string): Promise<{ notExported: number }> {
-  const res = await fetch(path, { credentials: 'same-origin', headers: accessHeaders() });
+  const res = await fetch(serverUrl(path), { credentials: android() ? 'omit' : 'same-origin', headers: appHeaders() });
   if (!res.ok) throw new ApiError(res.status, (await res.json().catch(() => null))?.error ?? `Server said ${res.status}`);
   const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallbackName;
   saveBlob(await res.blob(), name);

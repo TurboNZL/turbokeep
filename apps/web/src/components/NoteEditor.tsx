@@ -14,6 +14,7 @@ import { DatePicker } from './DatePicker.tsx';
 import { titleOverflow } from '../lib/title.ts';
 import { recallNote, rememberNote } from '../lib/cache.ts';
 import { takeEditorFocus, takeTypeAhead, peekTypeAhead } from '../lib/focus.ts';
+import { serverBase } from '../lib/native.ts';
 
 type Save = 'saved' | 'saving' | 'dirty' | 'offline' | 'conflict';
 type Meta = Pick<Note, 'pinned' | 'archived' | 'trashed' | 'onList' | 'dueDate' | 'percentDone' | 'tags'>;
@@ -186,7 +187,7 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
         {showPreview && <div className={cn('guide card min-h-[5.5rem] overflow-auto p-4', !split && 'cursor-text')} aria-label="Preview" title={split ? undefined : 'Click to edit'} dangerouslySetInnerHTML={{ __html: html || '<p class="text-muted">Nothing to preview.</p>' }}
           onClick={(e) => {
             const a = (e.target as HTMLElement).closest('a'); const m = a && /\/home\/([0-9a-f-]{36})/i.exec(a.getAttribute('href') ?? '');
-            if (a && m && a.href.startsWith(location.origin)) { e.preventDefault(); onOpenNote(m[1]!.toLowerCase()); return; }
+            if (a && m && (a.href.startsWith(location.origin) || (serverBase() !== '' && a.href.startsWith(serverBase())))) { e.preventDefault(); onOpenNote(m[1]!.toLowerCase()); return; }
             if (!a && !split && !ro) { caret.current = text.length; setEditing(true); }
           }} />}
       </div>
