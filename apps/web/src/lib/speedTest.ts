@@ -34,5 +34,14 @@ export async function speedTest(base: string, headers: Record<string, string>, t
   } catch (e) {
     out.push({ label: 'Write request (POST)', ms: null, note: 'did not get an answer. GET works, so look at the Access application (it must let POST through for the service token). ' + ((e as Error).message ?? '') });
   }
+  // Where exactly does a write fail? Three plain browser requests, from the page, each narrower than the last (the app's own write above skips all of them).
+  const probe = async (label: string, init: RequestInit, ok: (r: Response) => string, bad: string) => {
+    const t0 = performance.now();
+    try { const r = await f(base + '/api/auth/password', { ...init, cache: 'no-store' }); out.push({ label, ms: Math.round(performance.now() - t0), note: ok(r) }); }
+    catch (e) { out.push({ label, ms: null, note: `${bad} (${(e as Error).message})` }); }
+  };
+  await probe('Browser POST, no extra headers (no preflight)', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: '{}' }, (r) => `HTTP ${r.status}: the server's answer is readable by the page`, 'no readable answer: the connection failed, or the answer has no Access-Control-Allow-Origin for this page');
+  await probe('Browser POST, reachable at all? (no-cors)', { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: '{}' }, () => 'the request reached something (the answer is hidden on purpose)', 'it did not even reach the server: network, address or Cloudflare');
+  await probe('Browser POST with the headers the app uses (needs a preflight)', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: '{}' }, (r) => `HTTP ${r.status}: preflight and write both fine`, 'the preflight was refused or its answer was wrong: Access or the server did not allow these headers from this page');
   return out;
 }
