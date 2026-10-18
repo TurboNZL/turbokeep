@@ -52,7 +52,8 @@ export function Composer({ tag, autoFocus, onAdded, onPopup }: { tag?: string; a
   const popup = (first: string) => {
     // nothing waits for the server: the item is shown and its editor opens in this very keystroke; the server is told in the background (the page chose the id)
     const stamp = new Date().toISOString();
-    const shown: Note = { id: crypto.randomUUID(), title: first, text: '', noteType: 'plain-text', pinned: false, archived: false, trashed: false, onList: !tag, dueDate: null, percentDone: 0, position: 0, tags: tag ? [tag] : [], createdAt: stamp, updatedAt: stamp, autoTitle: false };
+    const over = titleOverflow(first, ''); // a long paste is not a title: it is the text, under the date title
+    const shown: Note = { id: crypto.randomUUID(), title: over ? over.title : first, text: over ? over.text : '', autoTitle: !!over, noteType: 'plain-text', pinned: false, archived: false, trashed: false, onList: !tag, dueDate: null, percentDone: 0, position: 0, tags: tag ? [tag] : [], createdAt: stamp, updatedAt: stamp };
     popping.current = true;
     handoff.current = { id: shown.id, base: first, until: Date.now() + 1500 };
     const ending = window.setInterval(() => { const h = handoff.current; if (h && Date.now() < h.until && document.activeElement === titleEl.current) return; window.clearInterval(ending); if (handoff.current === h) { handoff.current = null; auto.current = false; setTitle(''); setText(''); draft.current = { title: '', text: '' }; } }, 40);

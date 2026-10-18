@@ -115,10 +115,17 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
 
   // ... and letters that arrive after it is on screen are added to the end of the title
   const titleNow = useRef(title); titleNow.current = title;
+  const textNow = useRef(text); textNow.current = text;
   useEffect(() => {
-    const apply = () => { const s = takeTypeAhead(note.id); if (s) { const t = titleNow.current + s; titleNow.current = t; setTitle(t); typed({ title: t }); } };
+    // pasted text can be long: past the title limit it goes into the description like anything typed there
+    const add = (s: string) => {
+      const t = titleNow.current + s, o = titleOverflow(t, textNow.current);
+      if (!o) { titleNow.current = t; setTitle(t); typed({ title: t }); return; }
+      titleNow.current = o.title; textNow.current = o.text; setTitle(o.title); setText(o.text); setEditing(true); caret.current = o.caret; typed({ title: o.title, text: o.text, autoTitle: true });
+    };
+    const apply = () => { const s = takeTypeAhead(note.id); if (s) add(s); };
     const had = early.current ?? '', now = takeTypeAhead(note.id);
-    if (now.length > had.length) { const t = titleNow.current + now.slice(had.length); titleNow.current = t; setTitle(t); typed({ title: t }); } else if (had) typed({ title: titleNow.current });
+    if (now.length > had.length) add(now.slice(had.length)); else if (had) typed({ title: titleNow.current });
     window.addEventListener('tk:typeahead', apply);
     return () => window.removeEventListener('tk:typeahead', apply);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
