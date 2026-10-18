@@ -31,9 +31,10 @@ export function useItemUi({ pile, closeIfOpen }: { pile: Pile; open?: (id: strin
     setFinishing((s) => new Set(s).add(n.id));
     await wait(finishMs());
     const ok = await patchNote(n.id, { archived: true });
+    if (ok) closeIfOpen(n.id); // an archived item leaves the editor, like a binned one
     setFinishing((s) => { const x = new Set(s); x.delete(n.id); return x; });
     if (ok) undoable(`Archived “${titleOf(n)}”`, () => void patchNote(n.id, { archived: false, onList: n.onList })); // a task that was sent to its tags comes back as a task
-  }, [undoable]);
+  }, [undoable, closeIfOpen]);
 
   const sendToTasks = useCallback(async (n: Note) => { const ok = await patchNote(n.id, { onList: true }); if (ok) undoable(`Sent “${titleOf(n)}” to your tasks`, () => void patchNote(n.id, { onList: false })); }, [undoable]);
   /** a task that already has tags goes straight to them; one without tags asks which */
@@ -62,7 +63,7 @@ export function useItemUi({ pile, closeIfOpen }: { pile: Pile; open?: (id: strin
       { key: 'dl', label: 'Download', icon: <Download size={15} />, divider: true, onSelect: () => void download(n) },
       // archiving is what finishing a task is called; a task has a tick for its icon, a note an archive box
       { key: 'done', label: n.archived ? 'Unarchive' : 'Archive', icon: n.archived ? (n.onList ? <RotateCcw size={15} /> : <ArchiveRestore size={15} />) : (n.onList ? <CheckCircle2 size={15} /> : <Archive size={15} />),
-        onSelect: () => (n.onList ? void toggleDone(n) : void patchNote(n.id, { archived: !n.archived })) },
+        onSelect: () => (n.onList ? void toggleDone(n) : void patchNote(n.id, { archived: !n.archived }).then((ok) => ok && !n.archived && closeIfOpen(n.id))) },
       link,
       { key: 'bin', label: 'Move to the bin', icon: <Trash2 size={15} />, danger: true, divider: true, onSelect: () => bin(n) },
     ];

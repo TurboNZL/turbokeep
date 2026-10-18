@@ -160,7 +160,7 @@ function Editor({ note, onBack, onGone, onOpenNote, startPicking, onPicked }: { 
         <span className={cn('text-xs', status === 'saved' ? 'text-muted' : status === 'saving' || status === 'dirty' ? 'text-warn' : 'text-bad')} aria-live="polite">{label[status]}</span>
         <div className="ml-auto flex flex-wrap items-center gap-1">
           {!ro && <button className="btn btn-ghost !min-h-10 !px-2.5" onClick={() => set({ pinned: !meta.pinned })} aria-pressed={meta.pinned} title={meta.pinned ? 'Unpin' : 'Pin to the top'}>{meta.pinned ? <PinOff size={17} /> : <Pin size={17} />}</button>}
-          {!ro && <button className="btn btn-ghost !min-h-10 !px-2.5" onClick={() => set({ archived: !meta.archived })} title={meta.archived ? 'Unarchive' : 'Archive'}>{meta.archived ? <ArchiveRestore size={17} /> : meta.onList ? <CheckCircle2 size={17} /> : <Archive size={17} />}</button>}
+          {!ro && <button className="btn btn-ghost !min-h-10 !px-2.5" onClick={() => { const archiving = !meta.archived; set({ archived: archiving }); if (archiving) onGone(); }} title={meta.archived ? 'Unarchive' : 'Archive'}>{meta.archived ? <ArchiveRestore size={17} /> : meta.onList ? <CheckCircle2 size={17} /> : <Archive size={17} />}</button>}
           <button className="btn btn-ghost !min-h-10 !px-2.5" onClick={() => void copyNoteLink(note.id)} title="Copy a link to this note (paste it into another note)"><Link2 size={17} /></button>
           <button className="btn btn-ghost !min-h-10 !px-2.5" onClick={download} title={`Download as .${markdown ? 'md' : 'txt'}`}><Download size={17} /></button>
           {ro

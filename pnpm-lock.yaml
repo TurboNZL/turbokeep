@@ -112,7 +112,7 @@ importers:
         version: 6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       turbothemes:
         specifier: github:TurboNZL/turboengine#path:/themes
-        version: https://codeload.github.com/TurboNZL/turboengine/tar.gz/378766815264ca91db67a0ec487dcd1a4648971a#path:/themes
+        version: https://codeload.github.com/TurboNZL/turboengine/tar.gz/5657826282dbac014212a0936a6ad633659cb7e6#path:/themes
       zustand:
         specifier: ^5.0.0
         version: 5.0.15(@types/react@18.3.31)(react@18.3.1)
@@ -1357,8 +1357,8 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
-  turbothemes@https://codeload.github.com/TurboNZL/turboengine/tar.gz/378766815264ca91db67a0ec487dcd1a4648971a#path:/themes:
-    resolution: {path: /themes, tarball: https://codeload.github.com/TurboNZL/turboengine/tar.gz/378766815264ca91db67a0ec487dcd1a4648971a}
+  turbothemes@https://codeload.github.com/TurboNZL/turboengine/tar.gz/5657826282dbac014212a0936a6ad633659cb7e6#path:/themes:
+    resolution: {path: /themes, tarball: https://codeload.github.com/TurboNZL/turboengine/tar.gz/5657826282dbac014212a0936a6ad633659cb7e6}
     version: 1.0.0
     engines: {node: '>=22.6'}
     hasBin: true
@@ -2531,7 +2531,7 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.3
 
-  turbothemes@https://codeload.github.com/TurboNZL/turboengine/tar.gz/378766815264ca91db67a0ec487dcd1a4648971a#path:/themes: {}
+  turbothemes@https://codeload.github.com/TurboNZL/turboengine/tar.gz/5657826282dbac014212a0936a6ad633659cb7e6#path:/themes: {}
 
   typescript@5.9.3: {}
 
