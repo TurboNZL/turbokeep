@@ -94,7 +94,7 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:includeFontPadding="false"
-                android:maxLines="3"
+                android:maxLines="30"
                 android:paddingEnd="96dp"
                 android:textColor="@color/widget_text"
                 android:textSize="17sp"
