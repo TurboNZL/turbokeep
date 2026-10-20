@@ -137,10 +137,13 @@ class TasksWidgetProvider : AppWidgetProvider() {
                 v.setViewVisibility(R.id.detail_title, if (item.hasTitle) View.VISIBLE else View.GONE)
                 v.setTextViewText(R.id.detail_title, item.title)
                 v.setTextViewTextSize(R.id.detail_title, TypedValue.COMPLEX_UNIT_SP, 17f * zoom)
+                v.setInt(R.id.detail_title, "setMaxLines", 30) // the whole title, not three lines
                 v.setTextViewText(R.id.detail_meta, meta)
                 v.setViewVisibility(R.id.detail_meta, if (meta.isEmpty()) View.GONE else View.VISIBLE)
                 v.setTextViewTextSize(R.id.detail_meta, TypedValue.COMPLEX_UNIT_SP, 11f * zoom)
-                v.setTextViewText(R.id.detail_desc, item.text.ifBlank { "No description." })
+                // no placeholder for an empty description: the title (shown whole) gets the room
+                v.setViewVisibility(R.id.detail_desc, if (item.text.isBlank()) View.GONE else View.VISIBLE)
+                v.setTextViewText(R.id.detail_desc, item.text)
                 v.setTextViewTextSize(R.id.detail_desc, TypedValue.COMPLEX_UNIT_SP, 13f * zoom)
                 v.setInt(R.id.detail_desc, "setMaxLines", linesFor(ctx, manager, id, zoom))
                 v.setTextViewText(R.id.detail_done, "Archive") // archiving is what finishing a task is called
