@@ -7,7 +7,7 @@
 # Safe to run again: it updates what is there. Nothing is installed outside the folders and files named in the summary it prints first.
 set -euo pipefail
 
-USER_NAME="turbokeep"; DATA_DIR=""; PORT="47901"; REPO="https://github.com/TurboNZL/turbokeep.git"; BRANCH="main"; 
+USER_NAME="${SUDO_USER:-turbokeep}"; DATA_DIR=""; PORT="47901"; REPO="https://github.com/TurboNZL/turbokeep.git"; BRANCH="main"; 
 DRY=0; YES=0
 
 usage() { cat <<USAGE
@@ -15,7 +15,8 @@ Usage: install-pi.sh [options]
   --data-dir PATH   where your notes and tasks live (the database). On a Pi, prefer an external drive to the SD card.
                     Default: /var/lib/turbokeep (that IS the SD card on a Pi, and you will be asked to confirm)
   --port N          port of the server (default $PORT)
-  --user NAME       the system user that runs the server (default $USER_NAME)
+  --user NAME       the account that runs the server. Default: the account that ran sudo (so no extra account is created);
+                    only a direct root login falls back to a dedicated "turbokeep" account
   --repo URL        where to download TurboKeep from (default $REPO)
   --branch NAME     branch to install (default $BRANCH)
   --dry-run         print what would be done, change nothing
