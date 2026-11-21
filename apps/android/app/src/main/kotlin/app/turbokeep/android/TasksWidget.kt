@@ -128,7 +128,7 @@ class TasksWidgetProvider : AppWidgetProvider() {
             WidgetTheme.paintFrame(v, look, listOf(R.id.open, R.id.refresh, R.id.refresh_spin))
             v.setTextColor(R.id.detail_title, look.p.text); v.setTextColor(R.id.detail_desc, look.p.text); v.setTextColor(R.id.detail_meta, look.p.muted)
             WidgetTheme.layer(v, R.id.detail_done_bg, look.accent); v.setTextColor(R.id.detail_done_label, look.btnText)
-            WidgetTheme.layer(v, R.id.detail_send_bg, look.p.text, 0x30); v.setTextColor(R.id.detail_send_label, look.p.text)
+            WidgetTheme.layer(v, R.id.detail_send_bg, look.p.line); v.setTextColor(R.id.detail_send_label, look.p.text)
 
             val openId = prefs.widgetOpen(id)
             val item = if (openId.isEmpty()) null else WidgetData.cached(ctx, tag).firstOrNull { it.id == openId }
@@ -140,19 +140,19 @@ class TasksWidgetProvider : AppWidgetProvider() {
                 val (meta, _) = WidgetData.meta(item, showTags = prefs.widgetShowTags)
                 // an item with no title of its own shows only its text
                 v.setViewVisibility(R.id.detail_title, if (item.hasTitle) View.VISIBLE else View.GONE)
-                v.setTextViewText(R.id.detail_title, item.title)
+                v.setTextViewText(R.id.detail_title, WidgetTheme.styled(item.title, look.family))
                 v.setTextViewTextSize(R.id.detail_title, TypedValue.COMPLEX_UNIT_SP, 17f * zoom)
                 v.setInt(R.id.detail_title, "setMaxLines", 30) // the whole title, not three lines
-                v.setTextViewText(R.id.detail_meta, meta)
+                v.setTextViewText(R.id.detail_meta, WidgetTheme.styled(meta, look.family))
                 v.setViewVisibility(R.id.detail_meta, if (meta.isEmpty()) View.GONE else View.VISIBLE)
                 v.setTextViewTextSize(R.id.detail_meta, TypedValue.COMPLEX_UNIT_SP, 11f * zoom)
                 // no placeholder for an empty description: the title (shown whole) gets the room
                 v.setViewVisibility(R.id.detail_desc, if (item.text.isBlank()) View.GONE else View.VISIBLE)
-                v.setTextViewText(R.id.detail_desc, item.text)
+                v.setTextViewText(R.id.detail_desc, WidgetTheme.styled(item.text, look.family))
                 v.setTextViewTextSize(R.id.detail_desc, TypedValue.COMPLEX_UNIT_SP, 13f * zoom)
                 v.setInt(R.id.detail_desc, "setMaxLines", linesFor(ctx, manager, id, zoom))
-                v.setTextViewText(R.id.detail_done_label, "Archive") // archiving is what finishing a task is called
-                v.setTextViewText(R.id.detail_send_label, if (tag.isEmpty()) "Send to tags" else "Send to tasks")
+                v.setTextViewText(R.id.detail_done_label, WidgetTheme.styled("Archive", look.family)) // archiving is what finishing a task is called
+                v.setTextViewText(R.id.detail_send_label, WidgetTheme.styled(if (tag.isEmpty()) "Send to tags" else "Send to tasks", look.family))
                 v.setOnClickPendingIntent(R.id.detail_text, opIntent(ctx, id, 6, "collapse", item.id))
                 v.setOnClickPendingIntent(R.id.detail_done, opIntent(ctx, id, 7, "done", item.id))
                 v.setOnClickPendingIntent(R.id.detail_send, when {
@@ -171,11 +171,11 @@ class TasksWidgetProvider : AppWidgetProvider() {
             adapter.data = Uri.parse(adapter.toUri(Intent.URI_INTENT_SCHEME))
             v.setRemoteAdapter(R.id.list, adapter)
             v.setEmptyView(R.id.list, R.id.empty)
-            v.setTextViewText(R.id.empty, when {
+            v.setTextViewText(R.id.empty, WidgetTheme.styled(when {
                 !prefs.signedIn -> "Open TurboKeep and sign in, then this list fills."
                 tag.isEmpty() -> "Nothing on your list."
                 else -> "Nothing under “${tag.substringAfterLast('.')}” yet."
-            })
+            }, look.family))
             v.setTextViewTextSize(R.id.empty, TypedValue.COMPLEX_UNIT_SP, 14f * zoom.coerceAtLeast(0.8f))
 
             // open: the widget's settings first (they have an Open TurboKeep button), or straight into the app when that is turned off there
@@ -269,14 +269,14 @@ class TasksWidgetService : RemoteViewsService() {
             val density = ctx.resources.displayMetrics.density
             val v = RemoteViews(ctx.packageName, R.layout.widget_item)
             val look = WidgetTheme.look(ctx)
-            WidgetTheme.layer(v, R.id.card_bg, look.p.text, 0x20)
-            WidgetTheme.layer(v, R.id.card_stroke, look.p.text, if (look.outline) 0x55 else 0)
+            WidgetTheme.layer(v, R.id.card_bg, look.p.surface, look.bgAlpha.coerceAtLeast(0x60))
+            WidgetTheme.layer(v, R.id.card_stroke, look.p.line, if (look.outline) 0xFF else 0)
             v.setTextColor(R.id.item_title, look.p.text)
             val (meta, overdue) = WidgetData.meta(r, showTags = prefs.widgetShowTags)
 
-            v.setTextViewText(R.id.item_title, r.title)
+            v.setTextViewText(R.id.item_title, WidgetTheme.styled(r.title, look.family))
             v.setTextViewTextSize(R.id.item_title, TypedValue.COMPLEX_UNIT_SP, 14f * zoom)
-            v.setTextViewText(R.id.item_meta, meta)
+            v.setTextViewText(R.id.item_meta, WidgetTheme.styled(meta, look.family))
             v.setTextViewTextSize(R.id.item_meta, TypedValue.COMPLEX_UNIT_SP, 11f * zoom)
             v.setViewVisibility(R.id.item_meta, if (meta.isEmpty()) View.GONE else View.VISIBLE)
             v.setTextColor(R.id.item_meta, if (overdue) look.p.bad else look.p.muted)

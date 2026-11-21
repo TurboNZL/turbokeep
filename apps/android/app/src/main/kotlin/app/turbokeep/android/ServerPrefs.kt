@@ -56,11 +56,18 @@ class ServerPrefs(context: Context) {
         set(v) { p.edit().putBoolean("widgetShowTags", v).apply() }
     /** the widgets' colours (WidgetTheme): theme, accent, background opacity in percent, corner style, and whether items are outlined */
     var widgetTheme: String
-        get() = p.getString("widgetTheme", "dark") ?: "dark"
+        get() = p.getString("widgetTheme", "app") ?: "app"
         set(v) { p.edit().putString("widgetTheme", v).apply() }
     var widgetAccent: String
-        get() = p.getString("widgetAccent", "amber") ?: "amber"
+        get() = p.getString("widgetAccent", "theme") ?: "theme"
         set(v) { p.edit().putString("widgetAccent", v).apply() }
+    /** the font: "app" (the app's own UI style) or an engine style id; and the look the page last sent (JSON, see WidgetTheme.parseAppLook) */
+    var widgetFont: String
+        get() = p.getString("widgetFont", "app") ?: "app"
+        set(v) { p.edit().putString("widgetFont", v).apply() }
+    var appLook: String
+        get() = p.getString("appLook", "") ?: ""
+        set(v) { p.edit().putString("appLook", v).apply() }
     var widgetOpacity: Int
         get() = p.getInt("widgetOpacity", 93)
         set(v) { p.edit().putInt("widgetOpacity", v.coerceIn(0, 100)).apply() }

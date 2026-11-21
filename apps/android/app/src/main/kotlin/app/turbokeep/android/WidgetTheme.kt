@@ -13,41 +13,69 @@ import android.widget.RemoteViews
  * "Match phone" follows the dark/light setting at the moment the widget is drawn (a refresh or any change in the app redraws it).
  */
 object WidgetTheme {
-    class Palette(val bg: Int, val text: Int, val muted: Int, val bad: Int, val dark: Boolean)
+    /** `accentFg` is not used for button text (WidgetTheme.onColor keeps it readable on any accent) */
+    class Palette(val bg: Int, val surface: Int, val line: Int, val text: Int, val muted: Int, val bad: Int, val accent: Int, val dark: Boolean)
 
-    val THEMES = listOf("system" to "Match phone", "dark" to "Dark", "light" to "Light", "midnight" to "Midnight", "forest" to "Forest", "plum" to "Plum", "paper" to "Paper")
-    val ACCENTS = listOf("amber" to 0xFFFFB020.toInt(), "orange" to 0xFFFF7A33.toInt(), "red" to 0xFFE5484D.toInt(), "pink" to 0xFFF2599C.toInt(), "purple" to 0xFF9B7BF2.toInt(),
+    /** What the "Theme" list offers: follow the app, follow the phone's dark/light, or one of the engine's palettes (WidgetThemes, generated from TurboNZL/turboengine) */
+    val SOURCES = listOf("app" to "Match the app", "system" to "Match the phone (TurboKeep light/dark)")
+    val ACCENTS = listOf("theme" to 0, "amber" to 0xFFFFB020.toInt(), "orange" to 0xFFFF7A33.toInt(), "red" to 0xFFE5484D.toInt(), "pink" to 0xFFF2599C.toInt(), "purple" to 0xFF9B7BF2.toInt(),
         "blue" to 0xFF4C9AFF.toInt(), "teal" to 0xFF2BC4B4.toInt(), "green" to 0xFF4CC26B.toInt())
     val CORNERS = listOf("sq" to "Square", "md" to "Rounded", "lg" to "Very round")
+    const val DEFAULT_PALETTE = "turbokeep"
 
-    fun palette(theme: String, nightPhone: Boolean): Palette = when (if (theme == "system") (if (nightPhone) "dark" else "light") else theme) {
-        "light" -> Palette(0xFFF8F8FA.toInt(), 0xFF1B1B20.toInt(), 0xFF6A6A75.toInt(), 0xFFC62828.toInt(), false)
-        "midnight" -> Palette(0xFF0B1020.toInt(), 0xFFE6ECFF.toInt(), 0xFF8C98B8.toInt(), 0xFFFF7A70.toInt(), true)
-        "forest" -> Palette(0xFF0F1D16.toInt(), 0xFFE4F2E8.toInt(), 0xFF8FA99A.toInt(), 0xFFFF7A70.toInt(), true)
-        "plum" -> Palette(0xFF1D1226.toInt(), 0xFFF1E8F7.toInt(), 0xFFA793B3.toInt(), 0xFFFF7A70.toInt(), true)
-        "paper" -> Palette(0xFFFBF4E6.toInt(), 0xFF2A2216.toInt(), 0xFF7C6F58.toInt(), 0xFFB3261E.toInt(), false)
-        else -> Palette(0xFF15151B.toInt(), 0xFFF2F2F5.toInt(), 0xFF9A9AA5.toInt(), 0xFFFF6B5E.toInt(), true)
+    /** the names this app's first widget release saved that are not engine palette ids ("dark" is the engine's own Slate now, and stays that) */
+    fun migrate(theme: String): String = when (theme) { "light" -> "turbokeep-light"; "paper" -> "sand"; else -> theme }
+
+    private fun p(x: WidgetThemes.P) = Palette(x.bg, x.surface, x.line, x.fg, x.muted, x.bad, x.accent, x.dark)
+    private fun fallback(night: Boolean) = p(WidgetThemes.palette(if (night) DEFAULT_PALETTE else "turbokeep-light")!!)
+
+    /** the colours the page last sent (`setWidgetLook`), as {"ui", "bg", "surface", "line", "fg", "muted", "accent", "bad"} with #rrggbb values; null when none or unreadable */
+    class AppLook(val ui: String, val palette: Palette)
+    fun parseAppLook(json: String?): AppLook? {
+        if (json.isNullOrBlank()) return null
+        return try {
+            val o = org.json.JSONObject(json)
+            fun c(k: String) = (java.lang.Long.parseLong(o.getString(k).removePrefix("#"), 16).toInt()) or 0xFF000000.toInt()
+            val bg = c("bg"); val fg = c("fg")
+            AppLook(o.optString("ui", "default"), Palette(bg, c("surface"), c("line"), fg, c("muted"), c("bad"), c("accent"), luminance(bg) < luminance(fg)))
+        } catch (e: Exception) { null }
     }
 
-    fun accent(key: String): Int = ACCENTS.firstOrNull { it.first == key }?.second ?: ACCENTS[0].second
+    private fun luminance(c: Int) = 0.299 * ((c shr 16) and 255) + 0.587 * ((c shr 8) and 255) + 0.114 * (c and 255)
+
+    /** the palette for a saved choice ("app", "system" or an engine palette id) */
+    fun palette(theme: String, night: Boolean, app: AppLook?): Palette = when (val t = migrate(theme)) {
+        "app" -> app?.palette ?: fallback(night)
+        "system" -> fallback(night)
+        else -> WidgetThemes.palette(t)?.let { p(it) } ?: fallback(night)
+    }
+
+    /** the Android font family for a saved font choice ("app" = the app's own UI style, else an engine style id) */
+    fun family(font: String, app: AppLook?): String = WidgetThemes.style(if (font == "app") (app?.ui ?: "default") else font)?.family ?: "sans-serif"
+
+    fun accent(key: String): Int = ACCENTS.firstOrNull { it.first == key }?.second ?: 0
 
     /** black or white text, whichever reads better on `color` */
-    fun onColor(color: Int): Int {
-        val r = (color shr 16) and 255; val g = (color shr 8) and 255; val b = color and 255
-        return if (0.299 * r + 0.587 * g + 0.114 * b > 150) 0xFF1A1206.toInt() else 0xFFFFFFFF.toInt()
-    }
+    fun onColor(color: Int): Int = if (luminance(color) > 150) 0xFF1A1206.toInt() else 0xFFFFFFFF.toInt()
 
     fun cornersDrawable(key: String): Int = when (key) { "sq" -> R.drawable.widget_bg_sq; "lg" -> R.drawable.widget_bg_lg; else -> R.drawable.widget_bg_md }
 
     /** everything a drawing needs, read once from the saved choices */
-    class Look(val p: Palette, val accent: Int, val btnText: Int, val bgAlpha: Int, val corners: Int, val outline: Boolean)
+    class Look(val p: Palette, val accent: Int, val btnText: Int, val bgAlpha: Int, val corners: Int, val outline: Boolean, val family: String)
 
     fun look(ctx: Context): Look {
         val prefs = ServerPrefs(ctx)
         val night = (ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val accent = accent(prefs.widgetAccent)
-        return Look(palette(prefs.widgetTheme, night), accent, onColor(accent), (prefs.widgetOpacity * 255 / 100).coerceIn(0, 255), cornersDrawable(prefs.widgetCorners), prefs.widgetOutline)
+        val app = parseAppLook(prefs.appLook)
+        val pal = palette(prefs.widgetTheme, night, app)
+        val custom = accent(prefs.widgetAccent)
+        val accent = if (custom != 0) custom else pal.accent
+        return Look(pal, accent, onColor(accent), (prefs.widgetOpacity * 255 / 100).coerceIn(0, 255), cornersDrawable(prefs.widgetCorners), prefs.widgetOutline, family(prefs.widgetFont, app))
     }
+
+    /** text in the theme's font: a RemoteViews cannot change a view's typeface, but it carries spans, and a TypefaceSpan names one of Android's own families */
+    fun styled(text: CharSequence, family: String): CharSequence =
+        if (family == "sans-serif" || text.isEmpty()) text else android.text.SpannableString(text).apply { setSpan(android.text.style.TypefaceSpan(family), 0, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
 
     /** tint one of the white shape layers (opaque colour, faded by `alpha` 0..255) */
     fun layer(v: RemoteViews, id: Int, color: Int, alpha: Int = 255) { v.setInt(id, "setColorFilter", color); v.setInt(id, "setImageAlpha", alpha) }

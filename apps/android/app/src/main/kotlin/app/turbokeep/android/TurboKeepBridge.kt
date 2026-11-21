@@ -29,6 +29,8 @@ class TurboKeepBridge(private val context: Context) {
     @JavascriptInterface fun setAccess(id: String, secret: String) { prefs.cfId = id; prefs.cfSecret = secret }
     /** this app adds the service token to the page's own GET requests for the server (AccessProxy), so images load without the page fetching them */
     @JavascriptInterface fun accessInjected(): Boolean = true
+    /** the colours and UI style the page is wearing (the engine's theme, light/dark included): widgets set to "Match the app" wear them */
+    @JavascriptInterface fun setWidgetLook(json: String) { if (json != prefs.appLook) { prefs.appLook = json; WidgetRefresh.redrawAll(context) } }
     @JavascriptInterface fun refreshWidgets() { TasksWidgetProvider.refreshAll(context) }
     /** Settings > This app > Android app: the widget's settings window, opened from the page (it has no widget to belong to, so it holds the shared choices: text size, spacing, buttons, order) */
     @JavascriptInterface fun openWidgetSettings() { main.post { context.startActivity(Intent(context, WidgetSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
