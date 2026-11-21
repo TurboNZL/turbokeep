@@ -41,15 +41,17 @@ class NoteWidgetProvider : AppWidgetProvider() {
             val prefs = ServerPrefs(ctx)
             val noteId = prefs.noteOf(id)
             val v = RemoteViews(ctx.packageName, R.layout.widget_note)
+            val look = WidgetTheme.look(ctx)
+            WidgetTheme.paintFrame(v, look, listOf(R.id.open, R.id.refresh, R.id.refresh_spin))
             val adapter = Intent(ctx, NoteWidgetService::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
             adapter.data = Uri.parse(adapter.toUri(Intent.URI_INTENT_SCHEME))
             v.setRemoteAdapter(R.id.list, adapter)
             v.setEmptyView(R.id.list, R.id.empty)
-            v.setTextViewText(R.id.empty, when {
+            v.setTextViewText(R.id.empty, WidgetTheme.styled(when {
                 !prefs.signedIn -> "Open TurboKeep and sign in, then this note shows."
                 noteId.isEmpty() -> "Tap the open button to choose a note."
                 else -> "This note could not be loaded. Tap refresh."
-            })
+            }, look.family))
             // open: the note in the app; with no note chosen yet, the choice
             val openIntent = if (noteId.isEmpty()) Intent(ctx, NoteWidgetConfigActivity::class.java).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id).setData(Uri.parse("tkwidget://choose/$id"))
                 else Intent(ctx, MainActivity::class.java).putExtra(MainActivity.EXTRA_PATH, "/home/$noteId").setData(Uri.parse("tkwidget://note/$id"))
@@ -96,7 +98,9 @@ class NoteWidgetService : RemoteViewsService() {
             val r = rows[position]
             val zoom = ServerPrefs(ctx).widgetZoom
             val v = RemoteViews(ctx.packageName, if (r.isTitle) R.layout.widget_note_title else R.layout.widget_note_row)
-            v.setTextViewText(R.id.row_text, r.text)
+            val look = WidgetTheme.look(ctx)
+            v.setTextViewText(R.id.row_text, WidgetTheme.styled(r.text, look.family))
+            v.setTextColor(R.id.row_text, look.p.text)
             v.setTextViewTextSize(R.id.row_text, TypedValue.COMPLEX_UNIT_SP, (if (r.isTitle) 17f else 13f) * zoom)
             return v
         }

@@ -11,6 +11,10 @@ import { wantEditorFocus, typeAhead } from '../lib/focus.ts';
 import { rememberNote } from '../lib/cache.ts';
 import { excerpt } from '../lib/actions.ts';
 import { titleOverflow } from '../lib/title.ts';
+import { useWide } from '../lib/useWide.ts';
+
+/** On a phone the add box has no description: once the text is this long it becomes an item and its proper editor (with the description) opens. */
+export const PHONE_LONG = 80;
 
 /** The Add button elsewhere in the app asks for the focus with this (it works from Settings too: the request waits until Home is on screen). */
 let wanted = false;
@@ -21,7 +25,9 @@ export function requestCompose() { wanted = true; window.dispatchEvent(new Event
  * typed is kept, so nothing is lost. "Send to tags" files it straight away under as many tags as you like instead (it leaves the list and is found
  * by its tags). Ctrl+Enter in the description adds it too. Inside a tag, new things start with that tag.
  */
-export function Composer({ tag, autoFocus, onAdded, onPopup }: { tag?: string; autoFocus?: boolean; onAdded: (n: Note) => void; /** Keep views with "open on the first letter": called with the item made from that letter, to open it */ onPopup?: (n: Note) => void }) {
+export function Composer({ tag, autoFocus, onAdded, onPopup, onOpen }: { tag?: string; autoFocus?: boolean; onAdded: (n: Note) => void; /** Keep views with "open on the first letter": called with the item made from that letter, to open it */ onPopup?: (n: Note) => void; /** phones: opens the editor of an item whose text got long */ onOpen?: (n: Note) => void }) {
+  const wide = useWide();
+  const phoneLong = (v: string) => !wide && !!onOpen && v.length > PHONE_LONG;
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [picking, setPicking] = useState(false);
@@ -49,7 +55,7 @@ export function Composer({ tag, autoFocus, onAdded, onPopup }: { tag?: string; a
   const popping = useRef(false);
   /** after the first letter made the item: the box keeps showing `base` (what the item's title already is) until the editor has the cursor; letters typed meanwhile are passed on to it */
   const handoff = useRef<{ id: string; base: string; until: number } | null>(null);
-  const popup = (first: string) => {
+  const popup = (first: string, open?: (n: Note) => void) => {
     // nothing waits for the server: the item is shown and its editor opens in this very keystroke; the server is told in the background (the page chose the id)
     const stamp = new Date().toISOString();
     const over = titleOverflow(first, ''); // a long paste is not a title: it is the text, under the date title
@@ -59,7 +65,7 @@ export function Composer({ tag, autoFocus, onAdded, onPopup }: { tag?: string; a
     const ending = window.setInterval(() => { const h = handoff.current; if (h && Date.now() < h.until && document.activeElement === titleEl.current) return; window.clearInterval(ending); if (handoff.current === h) { handoff.current = null; auto.current = false; setTitle(''); setText(''); draft.current = { title: '', text: '' }; } }, 40);
     markFresh(shown.id);
     rememberNote(shown); // the editor opens from this copy, so the cursor is in its title before the next letter
-    onAdded(excerpt(shown)); wantEditorFocus(shown.id); onPopup?.(shown);
+    onAdded(excerpt(shown)); wantEditorFocus(shown.id); (open ?? onPopup)?.(shown);
     popping.current = false;
     api.createNoteNow(shown).then((n) => { const cur = useStore.getState().notes.find((x) => x.id === n.id); useStore.getState().upsertNote(cur ? { ...excerpt(n), title: cur.title, text: cur.text } : excerpt(n)); /* what was typed since stays */ void useStore.getState().refreshMeta(); pokeWidgets(); }).catch((e: Error) => {
       useStore.getState().removeNote(shown.id);
@@ -96,7 +102,8 @@ export function Composer({ tag, autoFocus, onAdded, onPopup }: { tag?: string; a
       onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node) && !pickingRef.current && !pressing.current) void commit(); }}>
       <div className="flex items-center gap-2">
         <AutoText ref={titleEl} className="input !min-h-11 max-h-48 flex-1 resize-none !py-2.5 !text-base" aria-label="Add something" placeholder={tag ? `Add to ${tag.split('.').pop()}…` : 'Add something…'} value={title} autoFocus={autoFocus}
-          enterKeyHint="done" autoComplete="off" onPaste={(e) => { const t = e.clipboardData.getData('text/plain'); if (onPopup && ((!title && !text) || handoff.current) && t.trim()) { e.preventDefault(); const h = handoff.current; if (h) typeAhead(h.id, t); else popup(t); } }} onChange={(e) => { const h = handoff.current; if (h) { const v = e.target.value; const added = v.startsWith(h.base) ? v.slice(h.base.length) : v; if (added) typeAhead(h.id, added); setTitle(h.base); return; } if (onPopup && !title && !text && e.target.value.trim() && !popping.current) { setTitle(e.target.value); draft.current = { title: e.target.value, text: '' }; popup(e.target.value); return; } const o = titleOverflow(e.target.value, text, e.target.selectionStart); if (o) { setTitle(o.title); setText(o.text); caret.current = o.caret; auto.current = true; } else { setTitle(e.target.value); if (popping.current) draft.current = { title: e.target.value, text: '' }; auto.current = false; } }}
+          enterKeyHint="done" autoComplete="off" onPaste={(e) => { const t = e.clipboardData.getData('text/plain'); if ((onPopup || phoneLong(title + t)) && ((!title && !text) || handoff.current || phoneLong(title + t)) && t.trim()) { e.preventDefault(); const h = handoff.current; if (h) typeAhead(h.id, t); else if (title || text) { const all = title + t; setTitle(all); draft.current = { title: all, text }; popup(all, onOpen); } else popup(t, onPopup ? undefined : onOpen); } }} onChange={(e) => { const h = handoff.current; if (h) { const v = e.target.value; const added = v.startsWith(h.base) ? v.slice(h.base.length) : v; if (added) typeAhead(h.id, added); setTitle(h.base); return; } if (phoneLong(e.target.value) && !text && !popping.current) { setTitle(e.target.value); draft.current = { title: e.target.value, text: '' }; popup(e.target.value, onOpen); return; }
+          if (onPopup && !title && !text && e.target.value.trim() && !popping.current) { setTitle(e.target.value); draft.current = { title: e.target.value, text: '' }; popup(e.target.value); return; } const o = titleOverflow(e.target.value, text, e.target.selectionStart); if (o) { setTitle(o.title); setText(o.text); caret.current = o.caret; auto.current = true; } else { setTitle(e.target.value); if (popping.current) draft.current = { title: e.target.value, text: '' }; auto.current = false; } }}
           // With "open as you type" the box only intercepts: a printable key (or a paste) never lands in it, it goes straight to the item's own editor (a phone's on-screen keyboard
           // sends no usable key here, so it still goes through onChange above)
           onKeyDown={(e) => {
@@ -106,9 +113,9 @@ export function Composer({ tag, autoFocus, onAdded, onPopup }: { tag?: string; a
               return;
             }
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void commit().then(() => titleEl.current?.focus()); } }} />
-        <button type="button" tabIndex={-1} className="btn btn-accent !min-h-11 !px-3" aria-label="Add" title="Add (Enter)" disabled={busy || (!title.trim() && !text.trim())} onClick={() => void commit().then(() => titleEl.current?.focus())}><Plus size={18} /></button>
+        <button type="button" tabIndex={-1} className="btn btn-accent !min-h-11 !px-3 max-md:hidden" aria-label="Add" title="Add (Enter)" disabled={busy || (!title.trim() && !text.trim())} onClick={() => void commit().then(() => titleEl.current?.focus())}><Plus size={18} /></button>
       </div>
-      {(title || text) && <textarea ref={textEl} className="input note-text min-h-[4.5rem] w-full resize-none !py-2 text-sm" rows={Math.min(8, text.split('\n').length + 1)}
+      {(title || text) && wide && <textarea ref={textEl} className="input note-text min-h-[4.5rem] w-full resize-none !py-2 text-sm" rows={Math.min(8, text.split('\n').length + 1)}
         aria-label="Description (optional)" placeholder="Description: press Tab after the title" value={text} onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void commit().then(() => titleEl.current?.focus()); } }} />}
       {(title.trim() || text.trim()) && (

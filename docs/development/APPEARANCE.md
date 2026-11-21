@@ -1,6 +1,6 @@
 # Appearance
 
-How Curator looks is not decided in this repository. It is decided by **turbothemes** ([github.com/TurboNZL/turbothemes](https://github.com/TurboNZL/turbothemes)), a small package that all of the owner's apps share, so they look consistent and the look can be improved without releasing an app.
+How Curator looks is not decided in this repository. It is decided by **turbothemes** (the `turbothemes` package, which now lives in [TurboNZL/turboengine](https://github.com/TurboNZL/turboengine) (`themes/`; the old turbothemes repository is retired)), a small package that all of the owner's apps share, so they look consistent and the look can be improved without releasing an app.
 
 | Part | Where | Changes |
 |---|---|---|

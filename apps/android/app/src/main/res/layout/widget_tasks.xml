@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@drawable/widget_bg">
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_bg_md" />
 
     <!-- the list: every pixel is items; the two round buttons float over the corners -->
     <FrameLayout
@@ -122,34 +128,58 @@
         </LinearLayout>
 
         <!-- floating over the text: top right, Complete (Archive for a tag's notes); bottom right, Send to tags (Send to tasks) -->
-        <TextView
+        <FrameLayout
             android:id="@+id/detail_done"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
             android:layout_gravity="top|end"
-            android:layout_margin="8dp"
-            android:background="@drawable/widget_pill"
-            android:gravity="center"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
-            android:text="Archive"
-            android:textColor="@color/widget_btn_text"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            android:layout_margin="8dp">
 
-        <TextView
+            <ImageView
+                android:id="@+id/detail_done_bg"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="fitXY"
+                android:src="@drawable/widget_pill_fill" />
+
+            <TextView
+                android:id="@+id/detail_done_label"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:text="Archive"
+                android:textColor="@color/widget_btn_text"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <FrameLayout
             android:id="@+id/detail_send"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
             android:layout_gravity="bottom|end"
-            android:layout_margin="8dp"
-            android:background="@drawable/widget_pill_secondary"
-            android:gravity="center"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
-            android:text="Send to tags"
-            android:textColor="@color/widget_text"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            android:layout_margin="8dp">
+
+            <ImageView
+                android:id="@+id/detail_send_bg"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="fitXY"
+                android:src="@drawable/widget_pill_fill" />
+
+            <TextView
+                android:id="@+id/detail_send_label"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:text="Send to tags"
+                android:textColor="@color/widget_text"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </FrameLayout>
     </FrameLayout>
 </FrameLayout>

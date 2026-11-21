@@ -7,6 +7,8 @@ export interface AndroidBridge {
   accessInjected?(): boolean;
   refreshWidgets(): void;
   openWidgetSettings(): void;
+  /** the colours and style the page is wearing right now (JSON: ui, bg, surface, line, fg, muted, accent, bad as #rrggbb); the widgets use them when set to match the app */
+  setWidgetLook?(json: string): void;
   checkUpdate(): void;
   installUpdate(): void;
   setUpdateToken(token: string): void;
@@ -57,4 +59,13 @@ export function saveWithApp(blob: Blob, name: string): Promise<boolean> {
     r.onerror = () => resolve(false);
     r.readAsDataURL(blob);
   });
+}
+
+/** Tells the app which look the page wears so widgets set to "match the app" can wear it too. No effect elsewhere (or in an app too old to know). */
+let lastLook = '';
+export function syncWidgetLook(look: Record<string, string>): void {
+  const json = JSON.stringify(look);
+  if (json === lastLook) return;
+  lastLook = json;
+  try { android()?.setWidgetLook?.(json); } catch { /* an old app */ }
 }

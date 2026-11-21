@@ -54,6 +54,29 @@ class ServerPrefs(context: Context) {
     var widgetShowTags: Boolean
         get() = p.getBoolean("widgetShowTags", false)
         set(v) { p.edit().putBoolean("widgetShowTags", v).apply() }
+    /** the widgets' colours (WidgetTheme): theme, accent, background opacity in percent, corner style, and whether items are outlined */
+    var widgetTheme: String
+        get() = p.getString("widgetTheme", "app") ?: "app"
+        set(v) { p.edit().putString("widgetTheme", v).apply() }
+    var widgetAccent: String
+        get() = p.getString("widgetAccent", "theme") ?: "theme"
+        set(v) { p.edit().putString("widgetAccent", v).apply() }
+    /** the font: "app" (the app's own UI style) or an engine style id; and the look the page last sent (JSON, see WidgetTheme.parseAppLook) */
+    var widgetFont: String
+        get() = p.getString("widgetFont", "app") ?: "app"
+        set(v) { p.edit().putString("widgetFont", v).apply() }
+    var appLook: String
+        get() = p.getString("appLook", "") ?: ""
+        set(v) { p.edit().putString("appLook", v).apply() }
+    var widgetOpacity: Int
+        get() = p.getInt("widgetOpacity", 93)
+        set(v) { p.edit().putInt("widgetOpacity", v.coerceIn(0, 100)).apply() }
+    var widgetCorners: String
+        get() = p.getString("widgetCorners", "md") ?: "md"
+        set(v) { p.edit().putString("widgetCorners", v).apply() }
+    var widgetOutline: Boolean
+        get() = p.getBoolean("widgetOutline", true)
+        set(v) { p.edit().putBoolean("widgetOutline", v).apply() }
     /** a refresh is running: the widgets show a spinner instead of the refresh arrow */
     var refreshing: Boolean
         get() = p.getBoolean("refreshing", false)
