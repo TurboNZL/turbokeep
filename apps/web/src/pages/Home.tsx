@@ -171,7 +171,7 @@ export function HomePage({ archive = false }: { archive?: boolean }) {
       </div>
       {soon && <p className="-mt-1 text-xs text-muted">The next five things with a date, and everything else due before the end of the day, week, month or 3 months they fall in. Overdue ones come first.</p>}
       {onTop && <div key={id} className="tk-expand space-y-2">{editor}<CloseBar onClose={close} /></div>}
-      {!onTop && !filter.q && !archive && !soon && <Composer key={filter.tag ?? ''} tag={filter.tag} autoFocus={wide && !id} onAdded={added} onPopup={settings.popupOnType ? (n) => { if (settings.editorOnTop) setTopId(n.id); go(n.id); } : undefined} />}
+      {!onTop && !filter.q && !archive && !soon && <Composer key={filter.tag ?? ''} tag={filter.tag} autoFocus={wide && !id} onAdded={added} onOpen={(n) => go(n.id)} onPopup={settings.popupOnType ? (n) => { if (settings.editorOnTop) setTopId(n.id); go(n.id); } : undefined} />}
       {filter.q && <><p className="text-sm text-muted">Results for “{filter.q}” on {archive ? 'the Archive' : 'Home'} <button className="underline" onClick={() => go(id, { q: undefined })}>clear</button></p><OtherPiles q={filter.q} from={archive ? 'archive' : 'home'} seed={notes.length} /></>}
       {error && <p role="alert" className="text-sm text-bad">{error}</p>}
       {!wide && !side && openNote && <button className="chip inline-flex items-center gap-1.5" onClick={() => nav(homeLink(openNote, filter, base))}><Pencil size={12} />Continue editing: {openTitle}</button>}

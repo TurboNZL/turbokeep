@@ -124,6 +124,11 @@ class TasksWidgetProvider : AppWidgetProvider() {
             val tag = prefs.widgetTag(id)
             val zoom = prefs.widgetZoom
             val v = RemoteViews(ctx.packageName, R.layout.widget_tasks)
+            val look = WidgetTheme.look(ctx)
+            WidgetTheme.paintFrame(v, look, listOf(R.id.open, R.id.refresh, R.id.refresh_spin))
+            v.setTextColor(R.id.detail_title, look.p.text); v.setTextColor(R.id.detail_desc, look.p.text); v.setTextColor(R.id.detail_meta, look.p.muted)
+            WidgetTheme.layer(v, R.id.detail_done_bg, look.accent); v.setTextColor(R.id.detail_done_label, look.btnText)
+            WidgetTheme.layer(v, R.id.detail_send_bg, look.p.text, 0x30); v.setTextColor(R.id.detail_send_label, look.p.text)
 
             val openId = prefs.widgetOpen(id)
             val item = if (openId.isEmpty()) null else WidgetData.cached(ctx, tag).firstOrNull { it.id == openId }
@@ -146,8 +151,8 @@ class TasksWidgetProvider : AppWidgetProvider() {
                 v.setTextViewText(R.id.detail_desc, item.text)
                 v.setTextViewTextSize(R.id.detail_desc, TypedValue.COMPLEX_UNIT_SP, 13f * zoom)
                 v.setInt(R.id.detail_desc, "setMaxLines", linesFor(ctx, manager, id, zoom))
-                v.setTextViewText(R.id.detail_done, "Archive") // archiving is what finishing a task is called
-                v.setTextViewText(R.id.detail_send, if (tag.isEmpty()) "Send to tags" else "Send to tasks")
+                v.setTextViewText(R.id.detail_done_label, "Archive") // archiving is what finishing a task is called
+                v.setTextViewText(R.id.detail_send_label, if (tag.isEmpty()) "Send to tags" else "Send to tasks")
                 v.setOnClickPendingIntent(R.id.detail_text, opIntent(ctx, id, 6, "collapse", item.id))
                 v.setOnClickPendingIntent(R.id.detail_done, opIntent(ctx, id, 7, "done", item.id))
                 v.setOnClickPendingIntent(R.id.detail_send, when {
@@ -263,6 +268,10 @@ class TasksWidgetService : RemoteViewsService() {
             val zoom = prefs.widgetZoom
             val density = ctx.resources.displayMetrics.density
             val v = RemoteViews(ctx.packageName, R.layout.widget_item)
+            val look = WidgetTheme.look(ctx)
+            WidgetTheme.layer(v, R.id.card_bg, look.p.text, 0x20)
+            WidgetTheme.layer(v, R.id.card_stroke, look.p.text, if (look.outline) 0x55 else 0)
+            v.setTextColor(R.id.item_title, look.p.text)
             val (meta, overdue) = WidgetData.meta(r, showTags = prefs.widgetShowTags)
 
             v.setTextViewText(R.id.item_title, r.title)
@@ -270,14 +279,14 @@ class TasksWidgetService : RemoteViewsService() {
             v.setTextViewText(R.id.item_meta, meta)
             v.setTextViewTextSize(R.id.item_meta, TypedValue.COMPLEX_UNIT_SP, 11f * zoom)
             v.setViewVisibility(R.id.item_meta, if (meta.isEmpty()) View.GONE else View.VISIBLE)
-            v.setTextColor(R.id.item_meta, ctx.getColor(if (overdue) R.color.widget_bad else R.color.widget_muted))
+            v.setTextColor(R.id.item_meta, if (overdue) look.p.bad else look.p.muted)
             // Space between items: above 0 it is room around each card; below 0 the cards lose their own padding (a list cannot overlap its rows, so at the
             // lowest setting they touch with no padding at all) and the text sits tighter.
             val gap = prefs.widgetSpacing
             val outer = if (gap > 0) gap / 2f else 0f
             val inner = if (gap >= 0) 5f * zoom.coerceAtMost(1.2f) else (5f + gap * 0.5f).coerceAtLeast(0f) * zoom.coerceAtMost(1.2f)
             v.setViewPadding(R.id.outer, 0, (outer * density).toInt(), 0, (outer * density).toInt())
-            v.setViewPadding(R.id.card, (10 * density).toInt(), (inner * density).toInt(), (10 * density).toInt(), (inner * density).toInt())
+            v.setViewPadding(R.id.card_inner, (10 * density).toInt(), (inner * density).toInt(), (10 * density).toInt(), (inner * density).toInt())
 
             // a tap opens the item up over the whole widget
             v.setOnClickFillInIntent(R.id.card, Intent().putExtra(TasksWidgetProvider.EXTRA_OP, "open").putExtra(TasksWidgetProvider.EXTRA_ID, r.id))

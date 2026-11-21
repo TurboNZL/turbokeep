@@ -10,6 +10,7 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -89,6 +90,43 @@ class WidgetSettingsActivity : AppCompatActivity() {
         slider("Space between items", 30, prefs.widgetSpacing + 10, { "${it - 10} dp" }) { prefs.widgetSpacing = it - 10 }
         // the round buttons floating over the corners (Android 12 and later can resize them): 24 .. 56 dp
         slider("Button size", 32, prefs.widgetButton - 24, { "${it + 24} dp" }) { prefs.widgetButton = it + 24 }
+
+        // colours: theme, accent, how see-through the background is, corners, outlines (WidgetTheme)
+        root.addView(TextView(this).apply { text = "Colours"; textSize = 16f; setPadding(0, pad / 2, 0, 0) })
+        fun choice(label: String, options: List<Pair<String, String>>, current: String, save: (String) -> Unit) {
+            root.addView(TextView(this).apply { text = label; setPadding(0, pad / 2, 0, 0) })
+            val sp = Spinner(this)
+            sp.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, options.map { it.second })
+            sp.setSelection(options.indexOfFirst { it.first == current }.coerceAtLeast(0), false)
+            sp.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) { save(options[pos].first); WidgetRefresh.redrawAll(applicationContext) }
+                override fun onNothingSelected(p: AdapterView<*>?) {}
+            }
+            root.addView(sp, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        choice("Theme", WidgetTheme.THEMES, prefs.widgetTheme) { prefs.widgetTheme = it }
+        root.addView(TextView(this).apply { text = "Accent (buttons and the spinner)"; setPadding(0, pad / 2, 0, 0) })
+        val swatches = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val marks = ArrayList<Pair<String, TextView>>()
+        fun mark() { for ((k, t) in marks) t.text = if (k == prefs.widgetAccent) "✓" else "" }
+        for ((key, color) in WidgetTheme.ACCENTS) {
+            val sw = TextView(this).apply {
+                gravity = android.view.Gravity.CENTER; setTextColor(WidgetTheme.onColor(color)); textSize = 16f; contentDescription = key
+                background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(color) }
+                setOnClickListener { prefs.widgetAccent = key; mark(); WidgetRefresh.redrawAll(applicationContext) }
+            }
+            marks.add(key to sw)
+            val size = (34 * resources.displayMetrics.density).toInt()
+            swatches.addView(sw, LinearLayout.LayoutParams(size, size).apply { setMargins(0, pad / 4, pad / 3, 0) })
+        }
+        mark()
+        root.addView(HorizontalScrollView(this).apply { addView(swatches) })
+        slider("Background opacity", 100, prefs.widgetOpacity, { "$it%" }) { prefs.widgetOpacity = it }
+        choice("Corners", WidgetTheme.CORNERS, prefs.widgetCorners) { prefs.widgetCorners = it }
+        root.addView(CheckBox(this).apply {
+            text = "Outline the items"; isChecked = prefs.widgetOutline
+            setOnCheckedChangeListener { _, on -> prefs.widgetOutline = on; WidgetRefresh.redrawAll(applicationContext) }
+        })
 
         root.addView(TextView(this).apply { text = "Order"; setPadding(0, pad / 2, 0, 0) })
         val group = RadioGroup(this)
